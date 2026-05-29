@@ -40,5 +40,5 @@ Branch is assumed to be already pushed. Don't `git push` unless explicitly asked
 ## Who merges
 
 - **Code in `agent_factory/`, tests, docs/** — any tech-team member after standard review (≥1 approval, CI green).
-- **Agentic foundation** (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.cursor/skills/`, `prompts/`, `profiles/`) — CTO sign-off required; then anyone merges.
+- **Agentic foundation** (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.cursor/skills/`, `prompts/`, `profiles/`) — core-team sign-off required; then anyone merges.
 - **Agents** never merge their own PRs and do not open PRs unless explicitly told. Open the PR when told to, then stop.

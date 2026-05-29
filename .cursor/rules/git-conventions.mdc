@@ -40,5 +40,5 @@ chore(deps): pin anthropic to 0.50.x
 ## Merge policy
 
 - **Code in `agent_factory/`, tests, docs/** — any tech-team member can merge after standard review (≥1 approval, CI green).
-- **Agentic foundation** (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.cursor/skills/`, `prompts/`, `profiles/`) — CTO sign-off required; after approval, anyone merges.
+- **Agentic foundation** (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.cursor/skills/`, `prompts/`, `profiles/`) — core-team sign-off required; after approval, anyone merges.
 - **Agents** never merge their own PRs.

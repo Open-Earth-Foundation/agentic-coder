@@ -1,6 +1,6 @@
 # agentic-coder — Operator Playbook
 
-How to actually run this thing in anger. For users (CTO, engineers), not for contributors.
+How to actually run this thing in anger. For operators (engineers running the tool against a target repo), not for contributors to `agentic-coder` itself.
 
 ---
 

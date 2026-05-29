@@ -64,7 +64,7 @@ agentic-coder/
 - **Do not break the public CLI surface** (`./run.sh markdown|jira|notion|scan|watch [...]`). It's contracted by team scripts.
 - **Do not silently change the default model or `max_agent_turns`.** These have cost implications.
 - **Do not depend on libraries beyond the minimal set** (`anthropic`, `python-dotenv`, optional `requests` for adapters). Keep `requirements.txt` boring.
-- **Do not modify `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.cursor/skills/`, `prompts/`, or `profiles/` without CTO review.** These are the agentic foundation. (Code merges in `agent_factory/` are unaffected — any tech-team member can merge after standard review.)
+- **Do not modify `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.cursor/skills/`, `prompts/`, or `profiles/` without core-team review.** These are the agentic foundation, curated by the core engineering team. (Code merges in `agent_factory/` are unaffected — any tech-team member can merge after standard review.)
 
 ## What you must always do
 
