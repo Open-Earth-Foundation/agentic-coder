@@ -219,11 +219,24 @@ NOTION_DATABASE_ID=your-database-id
 
 ```
 agentic-coder/
+├── AGENTS.md                     # Agent brief (read first)
+├── CLAUDE.md                     # Extra context for Claude Code
 ├── run.sh                        # CLI wrapper
 ├── .env / .env.example           # Configuration
-├── tasks/                        # Markdown task files
-│   ├── tasks-example.md
-│   └── demo-tasks.md
+├── .cursor/
+│   ├── rules/                    # Cursor rules (general, architecture, security, …)
+│   └── skills/                   # Named workflows (commit-message-standards, pull-request-standards)
+├── profiles/                     # Per-target-repo defaults (citycatalyst, global-data, agentic-coder)
+├── prompts/
+│   └── system-base.md            # Reference for the live system prompt
+├── tasks/                        # Markdown task backlogs
+│   ├── getting-started.md
+│   ├── citycatalyst-stability.md
+│   ├── global-data-cleanup.md
+│   └── self-improvement.md
+├── docs/
+│   ├── PLAYBOOK.md               # How to operate (overnight, watch, scan)
+│   └── EXTENDING.md              # How to add adapters, tools, scanner rules
 ├── logs/                         # Session logs (gitignored)
 └── agent_factory/                # Core package
     ├── main.py                   # CLI entry point
@@ -271,6 +284,16 @@ agentic-coder/
 - [ ] Web dashboard for monitoring runs and costs
 - [ ] MCP server integration for richer tool use
 - [ ] Custom scanner rules (configurable patterns per project)
+
+## Documentation map
+
+- **[`AGENTS.md`](AGENTS.md)** — agent brief; read first if you're an AI agent or new contributor.
+- **[`CLAUDE.md`](CLAUDE.md)** — extra context for Claude Code-style sessions.
+- **[`docs/PLAYBOOK.md`](docs/PLAYBOOK.md)** — operator guide: overnight runs, watch mode, scan, Cloud Agents.
+- **[`docs/EXTENDING.md`](docs/EXTENDING.md)** — how to add adapters, tools, scanner rules, profiles.
+- **[`profiles/`](profiles/)** — per-target-repo defaults (CityCatalyst, global-data, agentic-coder).
+- **[`prompts/system-base.md`](prompts/system-base.md)** — reference for the live system prompt.
+- **[`tasks/`](tasks/)** — curated task backlogs (citycatalyst-stability, global-data-cleanup, self-improvement).
 
 ## Why this exists
 

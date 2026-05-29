@@ -1,0 +1,18 @@
+# Files / dirs Cursor should NOT index for embeddings or context.
+
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+**/venv/
+
+# Logs (gitignored, large)
+logs/
+
+# Local env / secrets
+.env
+.env.local
+**/credentials*.json
+
+# OS noise
+.DS_Store
+**/.DS_Store

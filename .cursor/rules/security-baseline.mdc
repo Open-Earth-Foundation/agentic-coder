@@ -1,0 +1,47 @@
+---
+description: Security baseline — secrets, shell, gh token leakage, untrusted input.
+alwaysApply: true
+---
+
+# Security Baseline — agentic-coder
+
+This tool runs commands and edits files in **other repos** on behalf of an LLM. Treat it like a remote-code-execution surface in your own org.
+
+## Secrets
+
+- `.env` is gitignored. Never commit it.
+- `.env.example` is the canonical schema; keep it in sync with `Config` defaults.
+- Never log full Anthropic / Jira / Notion / GitHub tokens. Mask after the first 4 chars.
+- `tools.py:execute_tool` strips `GITHUB_TOKEN` from the env passed to subprocess. Keep that — don't "simplify" it away.
+
+## Shell (`run_command`)
+
+- `tools.py:run_command` accepts arbitrary shell input from the model. The current blocklist is small. **Improve, don't shrink.**
+  - Keep blocking: `rm -rf /`, force-pushes to `main`/`develop`/`master`, `git config --global` edits.
+  - Cap on output: 10k chars per call (already enforced).
+  - Cap on time: 120s (already enforced).
+- Do not extend `run_command` with elevation (`sudo`).
+
+## Tool dispatch
+
+- Dry-run mode (`Config.dry_run`) must skip both `edit_file` and `run_command`. Adding a new mutating tool? It must respect dry-run.
+
+## Preflight checks
+
+- `preflight.py` must continue to refuse to operate on a non-clean working tree, on the wrong base branch, or with `gh` unauthenticated.
+- If a check is bypassed, surface `--force` explicitly — never make bypass the default.
+
+## Adapter credentials
+
+- Jira / Notion adapters fail loudly when credentials are missing — do not fall back to anonymous mode.
+- HTTP adapters time out (Jira: 15s default, Notion: 15s default) — keep them.
+
+## Commit messages and PR bodies (model-authored)
+
+- Strip credentials and bearer tokens from the model's text output before posting (defensive — the model shouldn't emit them, but the `gh pr create` path is the last barrier).
+- PR body cap: keep ≤ 4k chars to avoid surprise on GitHub UI.
+
+## Cost guardrails
+
+- Cost tracking is informational, not a hard cap. The hard cap today is `max_agent_turns=50`. Do not raise without a reason in the PR body.
+- For autonomous scenarios (`watch`), consider a daily budget: log per-day spend and stop if exceeded.

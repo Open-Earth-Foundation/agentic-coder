@@ -1,0 +1,39 @@
+---
+description: TaskAdapter conventions — fetch_tasks, on_task_started, on_task_completed.
+globs: agent_factory/adapters/**/*.py
+alwaysApply: false
+---
+
+# Adapter Conventions
+
+Each adapter lives in `agent_factory/adapters/<source>.py` and implements `TaskAdapter`:
+
+```python
+class TaskAdapter:
+    def fetch_tasks(self) -> list[Task]: ...
+    def on_task_started(self, task: Task) -> None: ...
+    def on_task_completed(self, task: Task, result: AgentResult) -> None: ...
+```
+
+## Required behaviours
+
+- **Auth missing → loud failure** at `__init__`. Don't silently fall back to anonymous mode.
+- **HTTP timeouts** (15s default for Jira / Notion). Keep them.
+- **Lifecycle hooks** wrap upstream calls in try/except and `print` the error — they must **not** raise (a failed comment on Jira shouldn't kill the PR).
+- **Task fields** populated: at minimum `title`, `task_type`, `description`. `files` and `acceptance_criteria` are optional but the agent uses them when present.
+- **Stash adapter-specific identifiers** as private attrs on the Task (`_jira_key`, `_notion_page_id`).
+
+## When fetching
+
+- Sort tasks deterministically (e.g. by ticket key / created date). Don't rely on API ordering.
+- Limit pages — most adapters cap at 50 results per call.
+
+## Adding a new adapter
+
+See `docs/EXTENDING.md` → "Add an adapter". TL;DR:
+
+1. Subclass `TaskAdapter` in `adapters/<source>.py`.
+2. Add a branch in `_build_adapter()` (`main.py`).
+3. Add a subparser in `_build_argparser()` (`main.py`).
+4. Mirror `.env.example` block for credentials.
+5. Smoke test (`tests/adapters/test_<source>.py`).
