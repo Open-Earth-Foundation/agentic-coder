@@ -31,6 +31,7 @@ class Config:
     repo_path: str = field(default_factory=lambda: os.environ.get("REPO_PATH", ""))
     auto_commit: bool = True
     dry_run: bool = False
+    enable_evaluator: bool = True
 
     def validate(self) -> None:
         if not self.anthropic_api_key:
