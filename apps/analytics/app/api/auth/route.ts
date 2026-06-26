@@ -6,9 +6,12 @@ export async function POST(request: Request) {
 
   if (password === validPassword) {
     const response = NextResponse.json({ success: true });
+    // Note: `secure` is opt-in via COOKIE_SECURE=true (set when serving over HTTPS).
+    // For HTTP deployments the cookie must NOT be marked secure or the browser
+    // will silently drop it on the response.
     response.cookies.set("oef_auth", "authenticated", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.COOKIE_SECURE === "true",
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 7 days
     });
