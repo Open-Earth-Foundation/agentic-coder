@@ -39,10 +39,12 @@ usage() {
     echo "  External sources:"
     echo "    jira                 Fetch and run tasks from Jira (needs JIRA_* in .env)"
     echo "    notion               Fetch and run tasks from Notion (needs NOTION_* in .env)"
+    echo "    linear               Fetch and run tasks from Linear (needs LINEAR_* in .env)"
     echo ""
     echo "  Autonomous:"
     echo "    scan                 Scan repo for improvements and fix them"
-    echo "    watch <jira|notion>  Poll for tasks continuously (Ctrl+C to stop)"
+    echo "    watch <source>       Poll for tasks continuously (jira|notion|linear)"
+    echo "    estimate             Run AI estimation engine (scores unestimated Linear issues)"
     echo ""
     echo "  Utilities:"
     echo "    logs                 List recent session logs"
@@ -100,6 +102,12 @@ for i, t in enumerate(tasks, 1):
         ;;
     notion)
         python -m agent_factory notion
+        ;;
+    linear)
+        python -m agent_factory linear
+        ;;
+    estimate)
+        python -m agent_factory.estimator "${@:2}"
         ;;
     scan)
         python -m agent_factory scan
