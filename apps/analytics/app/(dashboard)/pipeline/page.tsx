@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { PageHeader, Section, Card, CardHeader, Badge } from "@/components/PageHeader";
 
-type Status = "live" | "done" | "planned";
+type Status = "live" | "ready" | "manual" | "planned";
 type Domain = "external" | "product" | "ai" | "engineering" | "leadership";
 
 interface Stage {
@@ -30,7 +30,7 @@ const STAGES: Stage[] = [
     input: "Meeting transcript (Fireflies)",
     output: "Decisions, action items, suggested tickets",
     status: "live",
-    persona: "Funga bot (JVP's system)",
+    persona: "Funga bot (JVP's system, runs on Replit)",
     detail: [
       "Fireflies records the meeting. Funga (funga@openearth.org) was invited.",
       "Claude extracts: summary, decisions, action items, KB findings, fungaCommands.",
@@ -47,7 +47,7 @@ const STAGES: Stage[] = [
     desc: "Product team takes meeting outputs + grants + product needs. Refines a sustained area of work.",
     input: "Meeting actions, engagements, grants",
     output: "Refined Initiative (Notion + Linear Project)",
-    status: "live",
+    status: "manual",
     persona: "JVP (Director of Product)",
     detail: [
       "Validates: multi-epic, multi-quarter, named owner, recognized in conversation",
@@ -66,7 +66,7 @@ const STAGES: Stage[] = [
     input: "Initiative + user stories + roles",
     output: "Estimated epic (FTE-sprints + calendar)",
     status: "live",
-    persona: "Product team via Funga",
+    persona: "Product team via Funga (Slack DM interview)",
     detail: [
       "Per-role PERT in FTE-sprints (Optimistic / Most-likely / Pessimistic)",
       "Roles: AI, DataEng, FullStack, PD, PM, AcctMgr",
@@ -83,16 +83,17 @@ const STAGES: Stage[] = [
     title: "AI Epic Decomposer",
     desc: "AI reads the confirmed epic + codebase context. Proposes a draft list of tickets for product review.",
     input: "Confirmed epic + linked Notion docs + codebase context",
-    output: "Suggested ticket list (drafts)",
-    status: "planned",
-    persona: "AI agent (to build)",
+    output: "Suggested ticket list (drafts in Linear)",
+    status: "ready",
+    persona: "AI Epic Decomposer agent",
     detail: [
       "Reads epic description, user stories, acceptance criteria",
-      "Searches CityCatalyst codebase for relevant areas (using `create-ticket` skill logic)",
-      "Drafts 3-15 tickets with: title, description skeleton, suggested type/area labels",
-      "Posts proposals as parent issue sub-issues with state='Triage' in Linear",
-      "Product reviews: accept / reject / modify / add more",
-      "Status: NOT YET BUILT. Planned in CC-427 family work.",
+      "Uses Claude to propose 3-15 tickets with title + description + type + area",
+      "Creates them as Linear sub-issues under the epic with state='Triage' and label='ai-proposed'",
+      "Posts summary comment on the epic with the full list + rationale",
+      "Product reviews: accept / reject / modify / add more (Step 4)",
+      "Run: ./run.sh decompose CC-336 (single epic) or ./run.sh decompose --watch (polls for needs-decomposition label)",
+      "Status: READY TO DEPLOY. Code in agent_factory/epic_decomposer.py.",
     ],
   },
   {
@@ -103,7 +104,7 @@ const STAGES: Stage[] = [
     desc: "Product accepts, modifies, removes, or adds tickets. Tags `AI SWE Intern` or `agent-ready` candidates.",
     input: "Suggested ticket list",
     output: "Curated ticket set",
-    status: "live",
+    status: "manual",
     persona: "JVP + product team",
     detail: [
       "Reviews each AI-proposed ticket in Linear",
@@ -121,14 +122,16 @@ const STAGES: Stage[] = [
     desc: "Each curated ticket is enriched: applies `create-ticket` or `refine-ticket` skill for codebase refs + AC.",
     input: "Curated ticket (draft)",
     output: "Sprint-ready ticket with AC, code refs, technical notes",
-    status: "planned",
-    persona: "AI agent (uses CityCatalyst skills)",
+    status: "ready",
+    persona: "AI Ticket Quality agent",
     detail: [
-      "Triggered on issue create (Linear webhook)",
-      "Uses `create-ticket` skill: classifies, searches codebase, drafts AC",
-      "Adds: User Story, Code References, Acceptance Criteria, DoR, Technical Notes",
-      "Posts as updated description on the Linear issue",
-      "Status: NOT YET BUILT. Skills exist in CityCatalyst, need wiring as service.",
+      "Reads title + description of a ticket",
+      "Classifies (Story / Task / Bug / Spike / Incident)",
+      "Rewrites description with structured sections: Summary, AC, DoR, Technical Notes",
+      "Preserves the original description at the bottom as a fallback",
+      "Posts a comment summarizing what was refined",
+      "Run: ./run.sh quality CC-375 or ./run.sh quality --watch (polls for needs-refinement label)",
+      "Status: READY TO DEPLOY. Code in agent_factory/ticket_quality.py.",
     ],
   },
   {
@@ -139,7 +142,7 @@ const STAGES: Stage[] = [
     desc: "AI scores impact + suggests T-shirt size for every ticket within 60 seconds.",
     input: "Quality-passed ticket",
     output: "Impact score + T-shirt suggestion + rationale (Linear comment)",
-    status: "live",
+    status: "ready",
     persona: "AI Estimation Engine",
     detail: [
       "Polls Linear every 120s for issues without estimate",
@@ -148,7 +151,8 @@ const STAGES: Stage[] = [
       "Suggests T-shirt size based on 46-sample historical calibration (avg 9.9d)",
       "Calibrated for AI-empowered team (~50% lower than traditional)",
       "Posts formatted comment with rationale",
-      "Status: LIVE. Try ./run.sh estimate",
+      "Run: ./run.sh estimate (continuous) or ./run.sh estimate --once",
+      "Status: READY TO DEPLOY. Code in agent_factory/estimator.py. Tested live on CC-424, CC-425, CC-426, CC-427.",
     ],
   },
   {
@@ -159,7 +163,7 @@ const STAGES: Stage[] = [
     desc: "Team gathers, sees AI estimate, votes own T-shirt. Discusses divergences.",
     input: "AI-estimated backlog",
     output: "Sprint commitments with dev estimates",
-    status: "live",
+    status: "manual",
     persona: "Engineering team meeting",
     detail: [
       "30-second decision per ticket: agree with AI, override, or delegate to AI Intern",
@@ -176,16 +180,17 @@ const STAGES: Stage[] = [
     title: "AI Calibration",
     desc: "Compares AI vs Dev estimate vs historical data. Flags severe divergences for 2-min discussion.",
     input: "AI estimate + Dev estimate + historical actuals",
-    output: "Calibrated points + divergence flag",
-    status: "planned",
-    persona: "AI agent (to build)",
+    output: "Calibrated points + divergence flag (Linear comment)",
+    status: "ready",
+    persona: "AI Calibration agent",
     detail: [
-      "Triggered after dev votes in Linear",
-      "Compares AI vs Dev vs historical samples by area + assignee",
-      "If divergence > 2 T-shirt sizes -> flags for discussion",
-      "Updates Linear issue with calibrated_points + reasoning comment",
-      "Calibration DB improves each sprint automatically",
-      "Status: NOT YET BUILT. Logic exists in methodology doc.",
+      "Reads the AI estimation comment + the dev's actual estimate from Linear",
+      "Cross-references with 46-sample historical calibration data",
+      "Computes divergence severity (none/low/medium/high)",
+      "Recommends a final 'calibrated_size' with rationale",
+      "Flags issues that need a 2-min discussion in sprint planning",
+      "Run: ./run.sh calibrate CC-375 or ./run.sh calibrate --watch (polls for new estimates)",
+      "Status: READY TO DEPLOY. Code in agent_factory/calibrator.py.",
     ],
   },
   {
@@ -196,7 +201,7 @@ const STAGES: Stage[] = [
     desc: "Work happens via 3 execution modes: human dev, AI agent, or non-tech guided.",
     input: "Calibrated sprint plan",
     output: "PRs + actual_days (auto-measured)",
-    status: "live",
+    status: "ready",
     persona: "Dev, Agent, or Non-Tech contributor",
     detail: [
       "Mode 1 (Human): Engineer picks ticket, codes, opens PR",
@@ -205,7 +210,8 @@ const STAGES: Stage[] = [
       "All paths produce PRs reviewed by engineering",
       "Time auto-tracked from Linear status transitions",
       "actual_days = time from 'In Progress' to 'Done' (working days)",
-      "Status: LIVE. All 3 modes working.",
+      "Run: ./run.sh watch linear (autonomous agent loop)",
+      "Status: READY TO DEPLOY. All 3 modes working locally.",
     ],
   },
   {
@@ -216,8 +222,8 @@ const STAGES: Stage[] = [
     desc: "Cost per feature calculated. Accuracy tracked. Calibration DB updated. CEO dashboard refreshed.",
     input: "actual_days x $300/day + impact realized",
     output: "$ per feature, KR alignment, calibration deltas",
-    status: "live",
-    persona: "OEF Analytics + AI Calibrator",
+    status: "ready",
+    persona: "OEF Analytics (this dashboard) + AI Calibrator",
     detail: [
       "Cost per feature: actual_days × daily_rate ($300/day avg)",
       "Estimation accuracy: estimate vs actual trend over sprints",
@@ -238,9 +244,10 @@ const DOMAIN_STYLES: Record<Domain, { bg: string; text: string; label: string }>
   leadership: { bg: "bg-purple-100", text: "text-purple-800", label: "Leadership" },
 };
 
-const STATUS_BADGE: Record<Status, { tone: "success" | "warning" | "info"; label: string }> = {
+const STATUS_BADGE: Record<Status, { tone: "success" | "warning" | "info" | "brand"; label: string }> = {
   live: { tone: "success", label: "Live" },
-  done: { tone: "success", label: "Done" },
+  ready: { tone: "brand", label: "Ready to deploy" },
+  manual: { tone: "info", label: "Manual" },
   planned: { tone: "warning", label: "Planned" },
 };
 
@@ -343,7 +350,10 @@ export default function PipelinePage() {
                       <p className="text-[0.62rem] text-[#7A7B9A] leading-snug">{stage.desc.slice(0, 65)}...</p>
                       <div className="mt-auto pt-2">
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[0.55rem] font-bold uppercase ${
-                          stage.status === "live" || stage.status === "done" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
+                          stage.status === "live" ? "bg-green-100 text-green-800" :
+                          stage.status === "ready" ? "bg-[#E8EAFB] text-[#2351DC]" :
+                          stage.status === "manual" ? "bg-blue-50 text-blue-700" :
+                          "bg-amber-100 text-amber-800"
                         }`}>
                           {statusBadge.label}
                         </span>
@@ -421,21 +431,26 @@ export default function PipelinePage() {
 
           {/* Current state */}
           <Section title="Current Implementation Status">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <Card className="p-5">
                 <div className="text-3xl font-extrabold text-green-600">{STAGES.filter(s => s.status === "live").length}</div>
-                <p className="text-sm text-[#232640] font-semibold mt-1">Live stages</p>
-                <p className="text-xs text-[#7A7B9A] mt-1">Working today, demo-able</p>
+                <p className="text-sm text-[#232640] font-semibold mt-1">Live</p>
+                <p className="text-xs text-[#7A7B9A] mt-1">Running in production today (Funga, PERT)</p>
+              </Card>
+              <Card className="p-5">
+                <div className="text-3xl font-extrabold text-[#2351DC]">{STAGES.filter(s => s.status === "ready").length}</div>
+                <p className="text-sm text-[#232640] font-semibold mt-1">Ready to deploy</p>
+                <p className="text-xs text-[#7A7B9A] mt-1">Working locally, awaiting AWS deploy</p>
+              </Card>
+              <Card className="p-5">
+                <div className="text-3xl font-extrabold text-blue-600">{STAGES.filter(s => s.status === "manual").length}</div>
+                <p className="text-sm text-[#232640] font-semibold mt-1">Manual</p>
+                <p className="text-xs text-[#7A7B9A] mt-1">Human work — no agent needed</p>
               </Card>
               <Card className="p-5">
                 <div className="text-3xl font-extrabold text-amber-600">{STAGES.filter(s => s.status === "planned").length}</div>
-                <p className="text-sm text-[#232640] font-semibold mt-1">Planned stages</p>
-                <p className="text-xs text-[#7A7B9A] mt-1">Epic Decomposer, Ticket Quality, Calibration</p>
-              </Card>
-              <Card className="p-5">
-                <div className="text-3xl font-extrabold text-[#2351DC]">{STAGES.length}</div>
-                <p className="text-sm text-[#232640] font-semibold mt-1">Total stages</p>
-                <p className="text-xs text-[#7A7B9A] mt-1">11 — 5 domains, 1 continuous flow</p>
+                <p className="text-sm text-[#232640] font-semibold mt-1">Planned</p>
+                <p className="text-xs text-[#7A7B9A] mt-1">Future work</p>
               </Card>
             </div>
           </Section>

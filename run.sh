@@ -44,7 +44,12 @@ usage() {
     echo "  Autonomous:"
     echo "    scan                 Scan repo for improvements and fix them"
     echo "    watch <source>       Poll for tasks continuously (jira|notion|linear)"
-    echo "    estimate             Run AI estimation engine (scores unestimated Linear issues)"
+    echo ""
+    echo "  AI Agents (Linear):"
+    echo "    estimate             AI Estimation Engine — scores unestimated issues"
+    echo "    decompose <epic>     AI Epic Decomposer — propose tickets from an epic"
+    echo "    quality <issue>      AI Ticket Quality — refine a ticket with AC + tech notes"
+    echo "    calibrate <issue>    AI Calibration — compare AI vs Dev estimates"
     echo ""
     echo "  Utilities:"
     echo "    logs                 List recent session logs"
@@ -108,6 +113,40 @@ for i, t in enumerate(tasks, 1):
         ;;
     estimate)
         python -m agent_factory.estimator "${@:2}"
+        ;;
+    decompose)
+        if [ -z "${2:-}" ]; then
+            echo "Error: specify an epic identifier, e.g. ./run.sh decompose CC-336"
+            echo "Or use --watch to poll for epics: ./run.sh decompose --watch"
+            exit 1
+        fi
+        if [ "${2}" = "--watch" ]; then
+            python -m agent_factory.epic_decomposer --watch
+        else
+            python -m agent_factory.epic_decomposer --epic "$2"
+        fi
+        ;;
+    quality)
+        if [ -z "${2:-}" ]; then
+            echo "Error: specify an issue identifier or --watch"
+            exit 1
+        fi
+        if [ "${2}" = "--watch" ]; then
+            python -m agent_factory.ticket_quality --watch
+        else
+            python -m agent_factory.ticket_quality --issue "$2"
+        fi
+        ;;
+    calibrate)
+        if [ -z "${2:-}" ]; then
+            echo "Error: specify an issue identifier or --watch"
+            exit 1
+        fi
+        if [ "${2}" = "--watch" ]; then
+            python -m agent_factory.calibrator --watch
+        else
+            python -m agent_factory.calibrator --issue "$2"
+        fi
         ;;
     scan)
         python -m agent_factory scan
