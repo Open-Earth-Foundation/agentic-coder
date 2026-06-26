@@ -57,6 +57,19 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "find_files",
+        "description": "Find files by name pattern in the repo. Uses the `find` command. Useful for locating files when you know part of the name.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "File name pattern (glob), e.g. '*.test.ts' or 'auth*.py'."},
+                "path": {"type": "string", "description": "Optional subdirectory to scope the search."},
+                "type": {"type": "string", "description": "Type filter: 'f' for files, 'd' for directories. Default 'f'.", "default": "f"},
+            },
+            "required": ["pattern"],
+        },
+    },
+    {
         "name": "run_command",
         "description": "Run a shell command in the repo directory. Use for git operations, linting, testing, etc. Returns stdout and stderr.",
         "input_schema": {
@@ -82,6 +95,8 @@ def execute_tool(name: str, args: dict, repo_root: str) -> str:
         return _list_directory(root, args["path"], args.get("depth", 1))
     elif name == "edit_file":
         return _edit_file(root, args["path"], args["old_string"], args["new_string"])
+    elif name == "find_files":
+        return _find_files(root, args["pattern"], args.get("path"), args.get("type", "f"))
     elif name == "run_command":
         return _run_command(root, args["command"])
     else:
@@ -175,6 +190,32 @@ def _edit_file(root: Path, rel_path: str, old_string: str, new_string: str) -> s
     return f"Successfully edited {rel_path}"
 
 
+def _find_files(root: Path, pattern: str, path: str | None, file_type: str) -> str:
+    search_path = str(root / path) if path else str(root)
+    cmd = [
+        "find", search_path,
+        "-name", pattern,
+        "-type", file_type or "f",
+        "-not", "-path", "*/.git/*",
+        "-not", "-path", "*/node_modules/*",
+        "-not", "-path", "*/.venv/*",
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        output = result.stdout.strip()
+        if not output:
+            return "No files found."
+        rel_lines = []
+        for line in output.splitlines()[:100]:
+            try:
+                rel_lines.append(str(Path(line).relative_to(root)))
+            except ValueError:
+                rel_lines.append(line)
+        return "\n".join(rel_lines)
+    except Exception as e:
+        return f"Error: {e}"
+
+
 def _run_command(root: Path, command: str) -> str:
     blocked = ["rm -rf /", "rm -rf ~", "push --force", "push -f"]
     if any(b in command for b in blocked):
@@ -186,7 +227,7 @@ def _run_command(root: Path, command: str) -> str:
             capture_output=True,
             text=True,
             cwd=str(root),
-            timeout=120,
+            timeout=300,
             env={
                 **{k: v for k, v in os.environ.items() if k != "GITHUB_TOKEN"},
                 "GIT_TERMINAL_PROMPT": "0",
@@ -201,6 +242,6 @@ def _run_command(root: Path, command: str) -> str:
             output += f"\n(exit code: {result.returncode})"
         return output.strip()[:10_000] or "(no output)"
     except subprocess.TimeoutExpired:
-        return "Error: command timed out after 120 seconds."
+        return "Error: command timed out after 300 seconds."
     except Exception as e:
         return f"Error: {e}"

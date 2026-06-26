@@ -1,0 +1,24 @@
+# Profile: CityCatalyst-global-data
+#
+# Loaded with `--profile global-data` (planned). Until the CLI flag lands,
+# copy these values into `.env` manually.
+
+repo_path: "../CityCatalyst-global-data"
+base_branch: "develop"
+branch_prefix: "agentic-coder"
+default_tasks_file: "tasks/global-data-cleanup.md"
+
+notes:
+  - "Read AGENTS.md and .cursor/rules/identity-keys.mdc before editing pipelines."
+  - "Use `actor_id` / `locode` for city joins, never `city_id`."
+  - "All `modelled.*` SQL writes must be `INSERT … ON CONFLICT … DO UPDATE`."
+  - "Run the `definition-of-done-check` skill before flipping `production_approved: true`."
+  - "Test docker stack locally if you touched `cc-mage/` Dockerfile or compose."
+
+scan:
+  enable_idle_scan: false           # data pipelines need human eyes
+  categories: []
+
+cost_budget:
+  per_task_usd_warn: 1.5
+  per_day_usd_hard_cap: 5.0

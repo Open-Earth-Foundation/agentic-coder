@@ -1,0 +1,26 @@
+# Profile: CityCatalyst (Open-Earth-Foundation/CityCatalyst)
+#
+# Loaded with `--profile citycatalyst` (planned). Until the CLI flag lands,
+# copy these values into `.env` manually.
+
+repo_path: "../CityCatalyst"
+base_branch: "develop"
+branch_prefix: "agentic-coder"
+default_tasks_file: "tasks/citycatalyst-stability.md"
+
+# Hints for the agent (consumed via system-prompt augmentation, not yet wired).
+notes:
+  - "Always run `npm run lint && npm run prettier && npm run jest` before pushing."
+  - "After API route changes, run `npm run openapi:lint`."
+  - "Read AGENTS.md and .cursor/rules/security-baseline.mdc before editing."
+  - "Use `apiHandler` for all routes; never re-implement auth or error handling."
+  - "Ticket prefix: ON-####. Pull from Linear / Jira when present."
+
+scan:
+  enable_idle_scan: true
+  max_pr_per_idle: 1
+  categories: [todo_fixme, console_log, as_any, empty_catch]
+
+cost_budget:
+  per_task_usd_warn: 1.0
+  per_day_usd_hard_cap: 10.0

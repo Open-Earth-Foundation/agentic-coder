@@ -1,0 +1,47 @@
+---
+description: Anthropic tool-use conventions — TOOL_DEFINITIONS schemas, response handling.
+globs: agent_factory/agent.py,agent_factory/tools.py
+alwaysApply: false
+---
+
+# Anthropic tool-use conventions
+
+## Tool definitions
+
+Each tool in `tools.py:TOOL_DEFINITIONS` is a dict with:
+
+```python
+{
+    "name": "snake_case",
+    "description": "<one-line, instructions-to-the-model voice>",
+    "input_schema": {
+        "type": "object",
+        "properties": { ... },
+        "required": [ ... ],
+    },
+}
+```
+
+The `description` is read by the LLM. Write it as instructions, not as docs for humans.
+
+## Adding a new tool
+
+1. Add the schema in `TOOL_DEFINITIONS`.
+2. Add a branch in `execute_tool()` that returns a string (or short structured value) — never a multi-MB blob.
+3. Cap large outputs (truncate + indicate). The current `read_file` / `run_command` already do this — follow that pattern.
+4. Respect `Config.dry_run` if the tool mutates state.
+5. Add a smoke test in `tests/` (we'll need to create `tests/`; see `docs/EXTENDING.md`).
+
+## Response handling in the loop
+
+The loop reads `response.content` for both `text` blocks and `tool_use` blocks. After each turn:
+
+- Append the assistant message verbatim.
+- For each `tool_use`, run `execute_tool()` and append a `tool_result` with the same `tool_use_id`.
+- If `stop_reason == "end_turn"` and there were no `tool_use` blocks → done.
+- If there were no tool calls but not `end_turn` → exit early ("model gave up").
+- After `max_agent_turns` → exit without PR URL.
+
+## Cost / token usage
+
+`response.usage.input_tokens` and `output_tokens` are sampled per call. `UsageTracker` aggregates. Per-MTok rates are **hardcoded** for Sonnet. If the model changes, fix `COST_PER_MTok` in the same PR.

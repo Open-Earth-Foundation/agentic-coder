@@ -103,6 +103,22 @@ The "assign tasks and go to sleep" mode:
 
 When tasks are found, it processes them. When idle for 5 cycles, it runs a repo scan and fixes what it finds. `Ctrl+C` to stop.
 
+### Evaluator
+
+After the agent finishes its work, an optional evaluator pass runs a second Claude call to review the diff. It checks whether the change is minimal, correct, tested, and safe to merge. If it fails, the agent gets one more iteration to fix the issues.
+
+The evaluator is enabled by default. Disable it in config with `enable_evaluator: False`.
+
+### Report
+
+View a summary of all past runs:
+
+```bash
+python -m agent_factory report
+```
+
+Shows total tasks run, success rate (tasks that produced a PR), total estimated cost, and a list of recent PRs.
+
 ### Session logs
 
 Every completed task is logged to `logs/` with the full summary, PR URL, and cost:
@@ -142,13 +158,14 @@ Supported fields:
 
 ### Agent tools
 
-The agent has 5 tools it can call during its loop:
+The agent has 6 tools it can call during its loop:
 
 | Tool | What it does |
 |------|-------------|
 | `read_file` | Read any file in the repo (with line numbers) |
 | `search_code` | Regex search across the codebase (via ripgrep) |
 | `list_directory` | Explore the repo structure |
+| `find_files` | Find files by name pattern (via `find`) |
 | `edit_file` | Precise string replacement in files |
 | `run_command` | Git operations, linting, testing, type checking |
 
@@ -219,11 +236,24 @@ NOTION_DATABASE_ID=your-database-id
 
 ```
 agentic-coder/
+├── AGENTS.md                     # Agent brief (read first)
+├── CLAUDE.md                     # Extra context for Claude Code
 ├── run.sh                        # CLI wrapper
 ├── .env / .env.example           # Configuration
-├── tasks/                        # Markdown task files
-│   ├── tasks-example.md
-│   └── demo-tasks.md
+├── .cursor/
+│   ├── rules/                    # Cursor rules (general, architecture, security, …)
+│   └── skills/                   # Named workflows (commit-message-standards, pull-request-standards)
+├── profiles/                     # Per-target-repo defaults (citycatalyst, global-data, agentic-coder)
+├── prompts/
+│   └── system-base.md            # Reference for the live system prompt
+├── tasks/                        # Markdown task backlogs
+│   ├── getting-started.md
+│   ├── citycatalyst-stability.md
+│   ├── global-data-cleanup.md
+│   └── self-improvement.md
+├── docs/
+│   ├── PLAYBOOK.md               # How to operate (overnight, watch, scan)
+│   └── EXTENDING.md              # How to add adapters, tools, scanner rules
 ├── logs/                         # Session logs (gitignored)
 └── agent_factory/                # Core package
     ├── main.py                   # CLI entry point
@@ -234,7 +264,8 @@ agentic-coder/
     ├── watcher.py                # Continuous polling loop
     ├── preflight.py              # Pre-flight checks
     ├── task_parser.py            # Task dataclass + markdown parser
-    ├── tools.py                  # 5 agent tools
+    ├── evaluator.py              # Evaluator pass (diff review)
+    ├── tools.py                  # 6 agent tools
     └── adapters/
         ├── base.py               # TaskAdapter interface
         ├── markdown.py           # Markdown file adapter
@@ -259,6 +290,9 @@ agentic-coder/
 - [x] Session logging
 - [x] Testing loop (run existing tests, write new ones)
 - [x] Self-validation (linter, type checker, self-review)
+- [x] Evaluator pass (second Claude review of the diff before merge)
+- [x] Report command (session log summary with success rate and cost)
+- [x] Error resilience (retry with backoff on rate limits / 5xx)
 
 ### Next
 
@@ -271,6 +305,16 @@ agentic-coder/
 - [ ] Web dashboard for monitoring runs and costs
 - [ ] MCP server integration for richer tool use
 - [ ] Custom scanner rules (configurable patterns per project)
+
+## Documentation map
+
+- **[`AGENTS.md`](AGENTS.md)** — agent brief; read first if you're an AI agent or new contributor.
+- **[`CLAUDE.md`](CLAUDE.md)** — extra context for Claude Code-style sessions.
+- **[`docs/PLAYBOOK.md`](docs/PLAYBOOK.md)** — operator guide: overnight runs, watch mode, scan, Cloud Agents.
+- **[`docs/EXTENDING.md`](docs/EXTENDING.md)** — how to add adapters, tools, scanner rules, profiles.
+- **[`profiles/`](profiles/)** — per-target-repo defaults (CityCatalyst, global-data, agentic-coder).
+- **[`prompts/system-base.md`](prompts/system-base.md)** — reference for the live system prompt.
+- **[`tasks/`](tasks/)** — curated task backlogs (citycatalyst-stability, global-data-cleanup, self-improvement).
 
 ## Why this exists
 

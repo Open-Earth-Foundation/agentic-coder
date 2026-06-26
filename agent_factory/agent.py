@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from rich.panel import Panel
 
 from .config import Config
 from .context import gather_project_context
+from .evaluator import evaluate_changes
 from .task_parser import Task
 from .tools import TOOL_DEFINITIONS, execute_tool
 
@@ -188,16 +190,13 @@ def run_agent(task: Task, config: Config, repo_root: str) -> tuple[str, str | No
         console.print(f"[dim]Injected {ctx_len:,} chars of project context (rules, skills, README)[/dim]")
 
     all_text: list[str] = []
+    evaluator_remediation_done = False
 
     for turn in range(config.max_agent_turns):
         console.print(f"\n[dim]--- Turn {turn + 1}/{config.max_agent_turns} ---[/dim]")
 
-        response = client.messages.create(
-            model=config.model,
-            max_tokens=16384,
-            system=system,
-            tools=TOOL_DEFINITIONS,
-            messages=messages,
+        response = _api_call_with_retry(
+            client, config.model, system, TOOL_DEFINITIONS, messages
         )
         tracker.record(response)
 
@@ -212,6 +211,27 @@ def run_agent(task: Task, config: Config, repo_root: str) -> tuple[str, str | No
             all_text.append(tb.text)
 
         if response.stop_reason == "end_turn" and not tool_calls:
+            if (
+                config.enable_evaluator
+                and not config.dry_run
+                and not evaluator_remediation_done
+            ):
+                eval_result = _run_evaluator(task, config, repo_root)
+                if eval_result is not None:
+                    passed, feedback = eval_result
+                    if not passed:
+                        evaluator_remediation_done = True
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "The evaluator reviewed your diff and found issues. "
+                                "You have ONE more iteration to fix them.\n\n"
+                                f"**Evaluator feedback:**\n{feedback}"
+                            ),
+                        })
+                        console.print("[yellow]Evaluator requested remediation — one more iteration.[/yellow]")
+                        continue
+
             final_text = "\n".join(all_text)
             pr_url = _extract_pr_url(final_text)
             console.print(Panel(
@@ -259,6 +279,59 @@ def run_agent(task: Task, config: Config, repo_root: str) -> tuple[str, str | No
     final_text = "\n".join(all_text)
     _save_session_log(task, final_text, None, config, tracker)
     return final_text, None
+
+
+def _api_call_with_retry(
+    client: anthropic.Anthropic,
+    model: str,
+    system: str,
+    tools: list,
+    messages: list,
+    max_retries: int = 3,
+) -> Any:
+    """Call client.messages.create with exponential backoff on transient errors."""
+    for attempt in range(max_retries):
+        try:
+            return client.messages.create(
+                model=model,
+                max_tokens=16384,
+                system=system,
+                tools=tools,
+                messages=messages,
+            )
+        except (
+            anthropic.RateLimitError,
+            anthropic.APIConnectionError,
+            anthropic.InternalServerError,
+        ) as e:
+            if attempt == max_retries - 1:
+                raise
+            wait = 2 ** (attempt + 1)
+            console.print(f"[yellow]API error ({type(e).__name__}), retrying in {wait}s…[/yellow]")
+            time.sleep(wait)
+    raise RuntimeError("Unreachable")
+
+
+def _run_evaluator(
+    task: Task, config: Config, repo_root: str
+) -> tuple[bool, str] | None:
+    """Get the current diff and run the evaluator. Returns None if no diff."""
+    import subprocess
+    result = subprocess.run(
+        ["git", "diff", "HEAD~1"],
+        capture_output=True, text=True, cwd=repo_root,
+    )
+    diff = result.stdout.strip()
+    if not diff:
+        result = subprocess.run(
+            ["git", "diff"],
+            capture_output=True, text=True, cwd=repo_root,
+        )
+        diff = result.stdout.strip()
+    if not diff:
+        console.print("[dim]Evaluator skipped — no diff found.[/dim]")
+        return None
+    return evaluate_changes(diff, task, config)
 
 
 def _save_session_log(task: Task, summary: str, pr_url: str | None, config: Config, tracker: UsageTracker | None = None) -> None:

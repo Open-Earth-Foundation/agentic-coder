@@ -1,0 +1,13 @@
+---
+description: General coding standards for agentic-coder.
+alwaysApply: true
+---
+
+# General Rules
+
+- Keep the code small and obvious. This is a tool used unattended overnight; any abstraction must pay for itself.
+- No new top-level modules unless a real second use case justifies it.
+- Comments / docstrings on every public function. Internal helpers can stay terse if the name is obvious.
+- Prefer **intent / why** comments over what comments. The diff shows what.
+- No silent failures. Bare `except: pass` is banned outside Jira/Notion lifecycle hooks where the upstream is genuinely best-effort.
+- `print()` is the current logging surface. If we adopt `logging`, do it project-wide in one PR.

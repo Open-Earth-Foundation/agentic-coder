@@ -1,0 +1,15 @@
+---
+description: POSIX shell defaults; `run.sh` is bash-only.
+alwaysApply: true
+---
+
+# OS / Shell Defaults
+
+This repo ships `run.sh` (bash). Default to POSIX `bash`.
+
+- `bash`-isms allowed inside `run.sh`. Document in comments where they're load-bearing.
+- Forward-slash paths.
+- `cat <<'EOF'` heredocs for multi-line text.
+- Avoid pagers in the agent's `run_command` invocations: append `| cat` or `--no-pager` for git.
+
+Windows users run inside WSL2.

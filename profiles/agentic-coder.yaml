@@ -1,0 +1,22 @@
+# Profile: agentic-coder running against itself.
+#
+# Useful for autonomous self-improvement runs (small, focused).
+# Keep budgets tight.
+
+repo_path: "."
+base_branch: "main"
+branch_prefix: "agent"
+default_tasks_file: "tasks/self-improvement.md"
+
+notes:
+  - "Read AGENTS.md, CLAUDE.md, and `.cursor/rules/security-baseline.mdc`."
+  - "Do not extend `tools.run_command` blocklist without a security review."
+  - "Keep `requirements.txt` minimal (anthropic, dotenv, optional adapter deps)."
+  - "Branch: agent/<slug>. Don't open PRs; push and stop."
+
+scan:
+  enable_idle_scan: false           # too risky to scan our own surface unattended
+
+cost_budget:
+  per_task_usd_warn: 0.5
+  per_day_usd_hard_cap: 2.0

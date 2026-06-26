@@ -34,6 +34,46 @@ def _build_adapter(args: argparse.Namespace) -> TaskAdapter:
         return MarkdownAdapter(args.tasks_file)
 
 
+def _print_report() -> None:
+    """Read all session logs and print a summary."""
+    import re
+    log_dir = Path(__file__).parent.parent / "logs"
+    if not log_dir.is_dir():
+        console.print("[yellow]No logs directory found.[/yellow]")
+        return
+
+    log_files = sorted(log_dir.glob("*.md"))
+    if not log_files:
+        console.print("[yellow]No session logs found.[/yellow]")
+        return
+
+    total_tasks = len(log_files)
+    pr_urls: list[str] = []
+    total_cost = 0.0
+
+    for lf in log_files:
+        text = lf.read_text()
+        pr_match = re.search(r"\*\*PR:\*\*\s*(https://github\.com/\S+/pull/\d+)", text)
+        if pr_match:
+            pr_urls.append(pr_match.group(1))
+        cost_match = re.search(r"Est\. cost: \$([0-9.]+)", text)
+        if cost_match:
+            total_cost += float(cost_match.group(1))
+
+    success_rate = (len(pr_urls) / total_tasks * 100) if total_tasks else 0
+
+    console.print(Panel("[bold]Agent Report[/bold]", style="blue"))
+    console.print(f"  Total tasks run:  {total_tasks}")
+    console.print(f"  PRs created:      {len(pr_urls)}")
+    console.print(f"  Success rate:     {success_rate:.0f}%")
+    console.print(f"  Total est. cost:  ${total_cost:.4f}")
+
+    if pr_urls:
+        console.print(f"\n  [bold]Recent PRs:[/bold]")
+        for url in pr_urls[-10:]:
+            console.print(f"    {url}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Agent Factory — autonomous coding agent.",
@@ -52,6 +92,9 @@ def main() -> None:
     # --- notion ---
     sub.add_parser("notion", help="Fetch tasks from Notion database (set NOTION_* in .env)")
 
+    # --- report ---
+    sub.add_parser("report", help="Print a summary of all session logs (tasks, success rate, cost)")
+
     # --- scan ---
     scan_parser = sub.add_parser("scan", help="Scan repo for improvements and fix them")
     scan_parser.add_argument("--max-tasks", type=int, default=3, help="Max improvements to fix per run.")
@@ -63,7 +106,7 @@ def main() -> None:
     watch_parser.add_argument("--no-scan", action="store_true", help="Disable repo scanning when idle.")
 
     # --- global options ---
-    for p in [parser, md_parser, jira_parser, scan_parser, watch_parser]:
+    for p in [parser, md_parser, jira_parser, scan_parser, watch_parser, ]:
         p.add_argument("--repo", default=None, help="Path to git repo (or REPO_PATH in .env).")
         p.add_argument("--api-key", help="Anthropic API key (or ANTHROPIC_API_KEY in .env).")
         p.add_argument("--model", default=None, help="Anthropic model to use.")
@@ -86,6 +129,10 @@ def main() -> None:
         else:
             parser.print_help()
             sys.exit(0)
+
+    if args.source == "report":
+        _print_report()
+        sys.exit(0)
 
     config_kwargs: dict = {}
     if args.api_key:

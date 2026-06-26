@@ -1,0 +1,44 @@
+---
+description: Branch naming, commit format, PR text. Base branch `main`.
+alwaysApply: true
+---
+
+# Git Conventions — agentic-coder
+
+## Base branch
+
+`main` (this is a tool repo, no `develop`).
+
+## Branches
+
+- `pborges/<slug>` — Pablo's work.
+- `feat/<slug>` / `fix/<slug>` / `chore/<slug>` — anyone.
+- `agent/<slug>` — Cursor-agent-driven work.
+- `agentic-coder/<slug>` — autonomous runs against itself (rare; safer to test against `CityCatalyst`).
+
+## Commit messages
+
+Conventional Commits (`<type>(<scope>): summary`).
+
+Recommended `<scope>`: `agent`, `tools`, `adapter`, `scanner`, `cli`, `docs`, `ci`.
+
+Examples:
+
+```
+feat(adapter): add linear task source
+fix(scanner): wire exclude_glob for console.log rule
+docs(playbook): document Cloud Agents kickoff template
+chore(deps): pin anthropic to 0.50.x
+```
+
+## PRs
+
+- Title ≤ 72 chars, imperative.
+- Body: Summary (1–3 sentences) + Changes (bullets) + Commits (optional).
+- **Don't open PRs unless explicitly told** in the active task. Push the branch and stop; a human reviews and opens it.
+
+## Merge policy
+
+- **Code in `agent_factory/`, tests, docs/** — any tech-team member can merge after standard review (≥1 approval, CI green).
+- **Agentic foundation** (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.cursor/skills/`, `prompts/`, `profiles/`) — core-team sign-off required; after approval, anyone merges.
+- **Agents** never merge their own PRs.
