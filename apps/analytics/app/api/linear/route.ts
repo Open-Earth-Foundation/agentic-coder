@@ -42,7 +42,7 @@ export async function GET() {
       }
     }`),
     linearQuery(`{
-      projects(filter: { teams: { id: { eq: "${teamId}" } } }, first: 20) {
+      projects(first: 20) {
         nodes {
           id name status { name }
           issues { nodes { id estimate state { type } } }

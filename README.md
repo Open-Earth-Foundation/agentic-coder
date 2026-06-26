@@ -244,7 +244,12 @@ REPO_PATH=../your-repo
 BRANCH_PREFIX=agentic-coder
 BASE_BRANCH=develop
 
-# Jira (optional)
+# Linear (recommended — primary integration)
+LINEAR_API_KEY=lin_api_...
+LINEAR_TEAM_ID=your-team-uuid
+LINEAR_AGENT_LABEL=agent-ready
+
+# Jira (optional — legacy, kept for backward compat)
 JIRA_DOMAIN=yourcompany.atlassian.net
 JIRA_EMAIL=you@company.com
 JIRA_API_TOKEN=your-token
@@ -256,17 +261,39 @@ NOTION_API_KEY=secret_...
 NOTION_DATABASE_ID=your-database-id
 ```
 
+## OEF Analytics Dashboard
+
+A read-only Next.js dashboard at `apps/analytics/` showing live engineering metrics:
+
+- Sprint velocity (points per cycle)
+- Pipeline status (issue distribution)
+- Cost per initiative (implied from estimates)
+- Estimation accuracy (AI vs actual)
+- DORA metrics (coming soon)
+
+```bash
+cd apps/analytics
+cp .env.example .env.local  # add LINEAR_API_KEY + ADMIN_PASSWORD
+npm install && npm run dev   # -> http://localhost:3000
+```
+
 ## Project structure
 
 ```
 agentic-coder/
 ├── AGENTS.md                     # Agent brief (read first)
 ├── CLAUDE.md                     # Extra context for Claude Code
-├── run.sh                        # CLI wrapper
+├── run.sh                        # CLI wrapper (agent, linear, estimate, watch, scan)
 ├── .env / .env.example           # Configuration
 ├── .cursor/
 │   ├── rules/                    # Cursor rules (general, architecture, security, …)
 │   └── skills/                   # Named workflows (commit-message-standards, pull-request-standards)
+├── apps/
+│   └── analytics/                # OEF Analytics dashboard (Next.js)
+│       ├── app/api/linear/       # Linear data API route
+│       ├── app/api/auth/         # Password auth
+│       ├── app/page.tsx          # Dashboard (velocity, ROI, pipeline, costs)
+│       └── middleware.ts         # Auth middleware
 ├── profiles/                     # Per-target-repo defaults (citycatalyst, global-data, agentic-coder)
 ├── prompts/
 │   └── system-base.md            # Reference for the live system prompt
