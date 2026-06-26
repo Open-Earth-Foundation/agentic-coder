@@ -30,6 +30,11 @@ def _build_adapter(args: argparse.Namespace) -> TaskAdapter:
     elif source == "notion":
         from .adapters.notion import NotionAdapter
         return NotionAdapter()
+    elif source == "linear":
+        from .adapters.linear import LinearAdapter
+        return LinearAdapter(
+            label=getattr(args, "label", None) or "agent-ready",
+        )
     else:
         return MarkdownAdapter(args.tasks_file)
 
@@ -92,6 +97,10 @@ def main() -> None:
     # --- notion ---
     sub.add_parser("notion", help="Fetch tasks from Notion database (set NOTION_* in .env)")
 
+    # --- linear ---
+    linear_parser = sub.add_parser("linear", help="Fetch tasks from Linear (set LINEAR_* in .env)")
+    linear_parser.add_argument("--label", default="agent-ready", help="Linear label to filter issues.")
+
     # --- report ---
     sub.add_parser("report", help="Print a summary of all session logs (tasks, success rate, cost)")
 
@@ -101,12 +110,12 @@ def main() -> None:
 
     # --- watch ---
     watch_parser = sub.add_parser("watch", help="Poll a source for tasks continuously")
-    watch_parser.add_argument("watch_source", choices=["jira", "notion"], help="Which source to poll.")
+    watch_parser.add_argument("watch_source", choices=["jira", "notion", "linear"], help="Which source to poll.")
     watch_parser.add_argument("--interval", type=int, default=120, help="Poll interval in seconds.")
     watch_parser.add_argument("--no-scan", action="store_true", help="Disable repo scanning when idle.")
 
     # --- global options ---
-    for p in [parser, md_parser, jira_parser, scan_parser, watch_parser, ]:
+    for p in [parser, md_parser, jira_parser, linear_parser, scan_parser, watch_parser]:
         p.add_argument("--repo", default=None, help="Path to git repo (or REPO_PATH in .env).")
         p.add_argument("--api-key", help="Anthropic API key (or ANTHROPIC_API_KEY in .env).")
         p.add_argument("--model", default=None, help="Anthropic model to use.")

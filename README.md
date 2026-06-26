@@ -82,6 +82,28 @@ Same idea, but from a Notion database:
 ./run.sh notion
 ```
 
+### Linear
+
+Connect to your Linear workspace and let the agent pick up labeled issues:
+
+```bash
+# Add LINEAR_* credentials to .env, then:
+./run.sh linear
+```
+
+The agent will fetch issues labeled `agent-ready`, move them to "In Progress", implement the fix, open a PR, and post the PR link as a comment on the Linear issue.
+
+### AI Estimation Engine
+
+Automatically score and estimate new Linear issues:
+
+```bash
+./run.sh estimate          # continuous polling (every 120s)
+./run.sh estimate --once   # single pass then exit
+```
+
+The estimator polls for issues without estimates, uses Claude to analyze complexity and impact, then posts a formatted suggestion (T-shirt size + rationale) as a comment. Engineers confirm via `Shift+E`.
+
 ### Autonomous scan
 
 Let the agent find and fix issues on its own:
@@ -99,6 +121,7 @@ The "assign tasks and go to sleep" mode:
 ```bash
 ./run.sh watch jira     # poll Jira every 2 minutes
 ./run.sh watch notion   # poll Notion every 2 minutes
+./run.sh watch linear   # poll Linear every 2 minutes
 ```
 
 When tasks are found, it processes them. When idle for 5 cycles, it runs a repo scan and fixes what it finds. `Ctrl+C` to stop.
@@ -189,6 +212,7 @@ Each task source has an adapter that handles the full lifecycle:
 | Markdown | Parses `## ` headings | — | — |
 | Jira | Queries by label | Moves to "In Progress" | Posts PR link as comment |
 | Notion | Queries by status | Sets "In Progress" | Sets "Done" + adds comment |
+| Linear | Queries by label (`agent-ready`) | Moves to "In Progress" | Posts PR comment + moves to "In Review" |
 
 ### Pre-flight checks
 
@@ -296,8 +320,8 @@ agentic-coder/
 
 ### Next
 
+- [x] Linear adapter
 - [ ] Multi-repo support (run across multiple repositories)
-- [ ] Linear adapter
 - [ ] GitHub Issues adapter (fetch issues labeled `agent-ready`)
 - [ ] Slack notifications (post PR links to a channel)
 - [ ] Configurable LLM (OpenAI, local models via Ollama)
