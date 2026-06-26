@@ -113,7 +113,7 @@ def fetch_unestimated_issues(api_key: str, team_id: str, limit: int = 10) -> lis
           team: {{ id: {{ eq: "{team_id}" }} }}
           estimate: {{ null: true }}
           state: {{ type: {{ nin: ["completed", "canceled"] }} }}
-          labels: {{ name: {{ neq: "ai-estimated" }} }}
+          labels: {{ every: {{ name: {{ neq: "ai-estimated" }} }} }}
         }}
         orderBy: createdAt
         first: {limit}
