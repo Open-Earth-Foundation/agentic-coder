@@ -53,34 +53,31 @@ class LinearAdapter(TaskAdapter):
         return result.get("data", {})
 
     def fetch_tasks(self) -> list[Task]:
-        query = """
-        query FetchAgentTasks($teamId: String, $label: String!) {
+        team_filter = f'team: {{ id: {{ eq: "{self.team_id}" }} }}' if self.team_id else ""
+        query = f"""
+        {{
           issues(
-            filter: {
-              team: { id: { eq: $teamId } }
-              labels: { name: { eq: $label } }
-              state: { type: { nin: ["completed", "canceled"] } }
-            }
-            orderBy: priority
+            filter: {{
+              {team_filter}
+              labels: {{ name: {{ eq: "{self.label}" }} }}
+              state: {{ type: {{ nin: ["completed", "canceled"] }} }}
+            }}
+            orderBy: createdAt
             first: 20
-          ) {
-            nodes {
+          ) {{
+            nodes {{
               id
               identifier
               title
               description
               priority
-              state { name type }
-              labels { nodes { name } }
-            }
-          }
-        }
+              state {{ name type }}
+              labels {{ nodes {{ name }} }}
+            }}
+          }}
+        }}
         """
-        variables = {"label": self.label}
-        if self.team_id:
-            variables["teamId"] = self.team_id
-
-        data = self._graphql(query, variables)
+        data = self._graphql(query)
         nodes = data.get("issues", {}).get("nodes", [])
 
         tasks = []

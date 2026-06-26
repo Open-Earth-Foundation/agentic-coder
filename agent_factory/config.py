@@ -24,7 +24,7 @@ _load_dotenv()
 @dataclass
 class Config:
     anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-5-20250929"
     max_agent_turns: int = 50
     branch_prefix: str = field(default_factory=lambda: os.environ.get("BRANCH_PREFIX", "agent"))
     base_branch: str = field(default_factory=lambda: os.environ.get("BASE_BRANCH", "develop"))
