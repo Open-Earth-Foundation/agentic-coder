@@ -141,7 +141,7 @@ def fetch_epics_needing_decomposition(api_key: str, team_id: str) -> list[dict]:
         nodes {{
           id name description
           initiatives {{ nodes {{ name }} }}
-          issues(first: 1) {{ nodes {{ id }} }}
+          issues(first: 50) {{ nodes {{ id title }} }}
         }}
       }}
     }}
@@ -149,9 +149,10 @@ def fetch_epics_needing_decomposition(api_key: str, team_id: str) -> list[dict]:
     try:
         data = _graphql(api_key, project_query)
         for p in data.get("projects", {}).get("nodes", []):
-            # Only decompose empty Projects (no issues yet)
-            if p.get("issues", {}).get("nodes"):
-                continue
+            # The label is an explicit human trigger — decompose even if the
+            # Project already has issues. Pass existing titles as context so
+            # the AI proposes complementary (not duplicate) tickets.
+            existing_titles = [n["title"] for n in p.get("issues", {}).get("nodes", [])]
             initiative = None
             inits = p.get("initiatives", {}).get("nodes", [])
             if inits:
@@ -164,6 +165,7 @@ def fetch_epics_needing_decomposition(api_key: str, team_id: str) -> list[dict]:
                 "description": p.get("description") or "",
                 "project": {"id": p["id"], "name": p["name"], "description": p.get("description")},
                 "initiative": initiative,
+                "existing_issues": existing_titles,
             })
     except Exception as e:
         print(f"[decomposer] project query failed (may be unsupported filter): {e}")
@@ -212,13 +214,22 @@ def decompose(epic: dict, config: Config) -> tuple[list[ProposedTicket], str]:
         if proj.get("description"):
             project_ctx += f"\nInitiative description: {proj['description'][:500]}"
 
+    existing_ctx = ""
+    existing = epic.get("existing_issues") or []
+    if existing:
+        listed = "\n".join(f"- {t}" for t in existing[:30])
+        existing_ctx = f"""
+**Tickets that ALREADY exist in this epic (do NOT duplicate them; propose only complementary work):**
+{listed}
+"""
+
     user_message = f"""Decompose this epic into draft tickets:
 
 **Epic Title:** {epic.get('title', 'Untitled')}
 **Epic Description:**
 {epic.get('description') or '(no description provided)'}
 {project_ctx}
-
+{existing_ctx}
 Propose 3-15 well-scoped tickets. Each should fit in 1-3 days. Respond with JSON only.
 """
 
@@ -413,18 +424,34 @@ def remove_needs_decomposition_label(api_key: str, team_id: str, epic: dict) -> 
     have team-scoped issue labels.
     """
     if epic.get("kind") == "project":
-        # Project labels: fetch current and rewrite without needs-decomposition
-        proj_q = f'{{ project(id: "{epic["id"]}") {{ labels {{ nodes {{ id name }} }} }} }}'
-        data = _graphql(api_key, proj_q)
-        current = data.get("project", {}).get("labels", {}).get("nodes", [])
-        remaining = [l["id"] for l in current if l["name"].lower() != "needs-decomposition"]
+        # Project labels are workspace-level. Swap needs-decomposition → ai-decomposed
+        # using the native add/remove mutations.
+        labels_q = '{ projectLabels(first: 100) { nodes { id name } } }'
+        data = _graphql(api_key, labels_q)
+        by_name = {l["name"].lower(): l["id"] for l in data.get("projectLabels", {}).get("nodes", [])}
 
-        mutation = """
-        mutation ProjectUpdate($id: String!, $input: ProjectUpdateInput!) {
-          projectUpdate(id: $id, input: $input) { success }
-        }
-        """
-        _graphql(api_key, mutation, {"id": epic["id"], "input": {"labelIds": remaining}})
+        needs_id = by_name.get("needs-decomposition")
+        if needs_id:
+            _graphql(api_key, """
+            mutation Remove($id: String!, $labelId: String!) {
+              projectRemoveLabel(id: $id, labelId: $labelId) { success }
+            }
+            """, {"id": epic["id"], "labelId": needs_id})
+
+        done_id = by_name.get("ai-decomposed")
+        if not done_id:
+            result = _graphql(api_key, """
+            mutation CreateLabel($input: ProjectLabelCreateInput!) {
+              projectLabelCreate(input: $input) { success projectLabel { id } }
+            }
+            """, {"input": {"name": "ai-decomposed", "color": "#8B5CF6"}})
+            done_id = result.get("projectLabelCreate", {}).get("projectLabel", {}).get("id")
+        if done_id:
+            _graphql(api_key, """
+            mutation Add($id: String!, $labelId: String!) {
+              projectAddLabel(id: $id, labelId: $labelId) { success }
+            }
+            """, {"id": epic["id"], "labelId": done_id})
         return
 
     # Issue-as-Epic path
