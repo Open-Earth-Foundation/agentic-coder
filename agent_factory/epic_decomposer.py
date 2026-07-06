@@ -187,13 +187,20 @@ Propose 3-15 well-scoped tickets. Each should fit in 1-3 days. Respond with JSON
 
 
 def create_proposed_tickets(api_key: str, team_id: str, epic: dict, tickets: list[ProposedTicket]) -> list[str]:
-    """Create the proposed tickets as sub-issues in Linear with Triage state + ai-proposed label."""
+    """Create the proposed tickets as sub-issues in Linear with Triage state.
+
+    Each ticket gets:
+    - Label `ai-proposed` — audit trail (this ticket came from the AI)
+    - Label `ready-for-quality` — kicks off the next agent in the pipeline
+    - Any inferred type/area labels
+    """
     created_ids = []
     epic_id = epic["id"]
     parent_id = epic["identifier"]
 
     for t in tickets:
-        labels = ["ai-proposed"]
+        # `ready-for-quality` is the signal to the Quality Gate agent to pick this up next
+        labels = ["ai-proposed", "ready-for-quality"]
         type_label = TYPE_TO_LABEL.get(t.type)
         if type_label:
             labels.append(type_label)
@@ -300,7 +307,7 @@ def post_summary_comment(api_key: str, epic_id: str, tickets: list[ProposedTicke
     for i, (t, tid) in enumerate(zip(tickets, created_ids), 1):
         lines.append(f"{i}. [{tid}] {t.title} ({t.type}/{t.area})")
     lines.append(f"\n**Rationale:** {rationale}")
-    lines.append("\n*Tickets created with `ai-proposed` label and state `Triage`. Product team: please review and curate.*")
+    lines.append("\n*Tickets created with `ai-proposed` + `ready-for-quality` labels, state `Triage`. The Quality Gate agent will refine them next, then AI Estimation will score them. Product team: review and curate before sprint planning.*")
 
     body = "\n".join(lines)
     mutation = """
@@ -309,6 +316,29 @@ def post_summary_comment(api_key: str, epic_id: str, tickets: list[ProposedTicke
     }
     """
     _graphql(api_key, mutation, {"issueId": epic_id, "body": body})
+
+
+def remove_needs_decomposition_label(api_key: str, team_id: str, epic_id: str) -> None:
+    """After decomposing an epic, strip the needs-decomposition label so it's not re-processed."""
+    label_q = f"""
+    {{ issueLabels(filter: {{ name: {{ eq: "needs-decomposition" }}, team: {{ id: {{ eq: "{team_id}" }} }} }}) {{ nodes {{ id }} }} }}
+    """
+    data = _graphql(api_key, label_q)
+    nodes = data.get("issueLabels", {}).get("nodes", [])
+    if not nodes:
+        return
+    label_id = nodes[0]["id"]
+
+    issue_q = f'{{ issue(id: "{epic_id}") {{ labels {{ nodes {{ id }} }} }} }}'
+    issue_data = _graphql(api_key, issue_q)
+    existing = [n["id"] for n in issue_data.get("issue", {}).get("labels", {}).get("nodes", []) if n["id"] != label_id]
+
+    mutation = """
+    mutation Update($id: String!, $input: IssueUpdateInput!) {
+      issueUpdate(id: $id, input: $input) { success }
+    }
+    """
+    _graphql(api_key, mutation, {"id": epic_id, "input": {"labelIds": existing}})
 
 
 def decompose_one(epic_identifier: str) -> None:
@@ -337,6 +367,13 @@ def decompose_one(epic_identifier: str) -> None:
 
     post_summary_comment(api_key, epic["id"], tickets, created, rationale)
     print(f"[decomposer] Posted summary comment to {epic['identifier']}")
+
+    # Strip the trigger label so this epic is not re-decomposed on the next poll
+    try:
+        remove_needs_decomposition_label(api_key, team_id, epic["id"])
+        print(f"[decomposer] Removed needs-decomposition label from {epic['identifier']}")
+    except Exception as e:
+        print(f"[decomposer] Warning: could not remove label from {epic['identifier']}: {e}")
 
 
 def watch_loop(interval: int = 300) -> None:

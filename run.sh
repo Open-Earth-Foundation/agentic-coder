@@ -50,6 +50,7 @@ usage() {
     echo "    decompose <epic>     AI Epic Decomposer — propose tickets from an epic"
     echo "    quality <issue>      AI Ticket Quality — refine a ticket with AC + tech notes"
     echo "    calibrate <issue>    AI Calibration — compare AI vs Dev estimates"
+    echo "    roi <issue>          ROI Measurement — actual vs estimate for a Done issue"
     echo ""
     echo "  Utilities:"
     echo "    logs                 List recent session logs"
@@ -146,6 +147,17 @@ for i, t in enumerate(tasks, 1):
             python -m agent_factory.calibrator --watch
         else
             python -m agent_factory.calibrator --issue "$2"
+        fi
+        ;;
+    roi)
+        if [ -z "${2:-}" ]; then
+            echo "Error: specify a Done issue identifier or --watch"
+            exit 1
+        fi
+        if [ "${2}" = "--watch" ]; then
+            python -m agent_factory.roi_measurer --watch
+        else
+            python -m agent_factory.roi_measurer --issue "$2"
         fi
         ;;
     scan)

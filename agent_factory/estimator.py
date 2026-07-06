@@ -100,20 +100,24 @@ def _linear_graphql(api_key: str, query: str, variables: dict | None = None) -> 
 
 
 def fetch_unestimated_issues(api_key: str, team_id: str, limit: int = 10) -> list[dict]:
-    """Fetch issues that have no estimate AND have not been scored by us yet.
+    """Fetch issues explicitly ready for estimation.
 
-    The exclusion criteria is the `ai-estimated` label which we set immediately
-    after posting our suggestion. Without it, this query would keep returning
-    the same issues every poll cycle and we'd burn API credits in a loop.
+    Gate is now the `ready-for-estimation` label (set by the Quality Gate agent,
+    or manually by a human bypassing the gate). This ensures we only estimate
+    things that have been vetted for description quality.
+
+    Additionally exclude anything we've already commented on (has `ai-estimated`).
     """
     query = f"""
     query {{
       issues(
         filter: {{
           team: {{ id: {{ eq: "{team_id}" }} }}
-          estimate: {{ null: true }}
+          labels: {{ some: {{ name: {{ eq: "ready-for-estimation" }} }} }}
           state: {{ type: {{ nin: ["completed", "canceled"] }} }}
-          labels: {{ every: {{ name: {{ neq: "ai-estimated" }} }} }}
+          and: [
+            {{ labels: {{ every: {{ name: {{ neq: "ai-estimated" }} }} }} }}
+          ]
         }}
         orderBy: createdAt
         first: {limit}
@@ -126,7 +130,7 @@ def fetch_unestimated_issues(api_key: str, team_id: str, limit: int = 10) -> lis
           priority
           project {{ name description }}
           parent {{ identifier title description }}
-          labels {{ nodes {{ name }} }}
+          labels {{ nodes {{ id name }} }}
           state {{ name }}
           createdAt
         }}
@@ -307,17 +311,19 @@ def post_estimation_comment(api_key: str, issue_id: str, result: EstimationResul
 
 
 def mark_issue_as_estimated(api_key: str, issue_id: str, team_id: str) -> None:
-    """Attach the `ai-estimated` label so the polling query skips this issue.
+    """Swap `ready-for-estimation` → `ai-estimated` on this issue.
 
-    Without this the estimator re-scores the same issue on every poll cycle.
+    - Adds `ai-estimated` so we don't re-process.
+    - Removes `ready-for-estimation` so the pipeline can move on.
     """
-    # Resolve the label ID once
+    # Resolve both label IDs
     label_q = f"""
-    {{ issueLabels(filter: {{ name: {{ eq: "ai-estimated" }}, team: {{ id: {{ eq: "{team_id}" }} }} }}) {{ nodes {{ id }} }} }}
+    {{ issueLabels(filter: {{ team: {{ id: {{ eq: "{team_id}" }} }} }}, first: 250) {{ nodes {{ id name }} }} }}
     """
     data = _linear_graphql(api_key, label_q)
-    nodes = data.get("issueLabels", {}).get("nodes", [])
-    if not nodes:
+    label_map = {n["name"].lower(): n["id"] for n in data.get("issueLabels", {}).get("nodes", [])}
+    ai_id = label_map.get("ai-estimated")
+    if not ai_id:
         # Auto-create if missing
         create = """
         mutation Create($input: IssueLabelCreateInput!) {
@@ -327,23 +333,18 @@ def mark_issue_as_estimated(api_key: str, issue_id: str, team_id: str) -> None:
         created = _linear_graphql(api_key, create, {
             "input": {"name": "ai-estimated", "color": "#22D3EE", "teamId": team_id}
         })
-        label_id = created.get("issueLabelCreate", {}).get("issueLabel", {}).get("id")
-    else:
-        label_id = nodes[0]["id"]
-    if not label_id:
-        return
-    mutation = """
-    mutation AddLabel($issueId: String!, $labelIds: [String!]!) {
-      issueAddLabel(id: $issueId, labelId: $labelIds) { success }
-    }
-    """
-    # Linear v2 mutation: issueUpdate with labelIds (additive via labelIds union)
-    # Simpler: just call issueUpdate with the label added.
+        ai_id = created.get("issueLabelCreate", {}).get("issueLabel", {}).get("id")
+    ready_id = label_map.get("ready-for-estimation")
+
     issue_q = f'{{ issue(id: "{issue_id}") {{ labels {{ nodes {{ id }} }} }} }}'
     issue_data = _linear_graphql(api_key, issue_q)
     existing = [n["id"] for n in issue_data.get("issue", {}).get("labels", {}).get("nodes", [])]
-    if label_id not in existing:
-        existing.append(label_id)
+
+    if ready_id and ready_id in existing:
+        existing.remove(ready_id)
+    if ai_id and ai_id not in existing:
+        existing.append(ai_id)
+
     update_mut = """
     mutation Update($id: String!, $input: IssueUpdateInput!) {
       issueUpdate(id: $id, input: $input) { success }
