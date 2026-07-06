@@ -214,6 +214,9 @@ def main() -> None:
         if watch_source == "jira":
             from .adapters.jira import JiraAdapter
             adapter = JiraAdapter()
+        elif watch_source == "linear":
+            from .adapters.linear import LinearAdapter
+            adapter = LinearAdapter()
         else:
             from .adapters.notion import NotionAdapter
             adapter = NotionAdapter()
