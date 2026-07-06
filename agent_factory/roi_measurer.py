@@ -148,10 +148,21 @@ def measure_one(identifier: str) -> None:
 
     delta_days = round(actual_days - dev_expected_days, 2)
     delta_cost = round(actual_cost - dev_expected_cost, 2)
-    accurate = abs(actual_days - dev_expected_days) <= dev_expected_days * 0.5  # within 50%
 
-    # Post comment
-    verdict = "✅ On track (within 50% of estimate)" if accurate else "⚠️ Overrun — actual exceeded estimate by >50%"
+    # Three-way accuracy classification:
+    # - Faster than estimate by >50% → 🚀 (efficient — team beat the estimate)
+    # - Within +/- 50% → ✅ on track
+    # - Slower by >50% → ⚠️ overrun
+    ratio = actual_days / dev_expected_days if dev_expected_days > 0 else 1
+    if ratio < 0.5:
+        verdict = "🚀 Delivered faster than estimated (team beat expected)"
+        accurate = True
+    elif ratio <= 1.5:
+        verdict = "✅ On track (within 50% of estimate)"
+        accurate = True
+    else:
+        verdict = "⚠️ Overrun — actual exceeded estimate by >50%"
+        accurate = False
     body = f"""**ROI Measurement**
 
 | | Value |
