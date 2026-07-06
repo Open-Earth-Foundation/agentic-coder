@@ -355,9 +355,16 @@ def mark_issue_as_estimated(api_key: str, issue_id: str, team_id: str) -> None:
 
 def load_calibration_data() -> dict | None:
     """Load historical calibration data if available."""
+    here = os.path.dirname(os.path.abspath(__file__))
     candidates = [
         os.environ.get("CALIBRATION_DATA_PATH", ""),
-        os.path.join(os.path.dirname(__file__), "..", "..", ".docs", "estimation-calibration-data.json"),
+        # In-repo location (production deploys)
+        os.path.join(here, "..", ".docs", "estimation-calibration-data.json"),
+        # Legacy sibling-of-repo location (local dev)
+        os.path.join(here, "..", "..", ".docs", "estimation-calibration-data.json"),
+        # Absolute production path (belt-and-suspenders)
+        "/opt/agentic-coder/.docs/estimation-calibration-data.json",
+        # Local dev path
         os.path.expanduser("~/Desktop/openearth/.docs/estimation-calibration-data.json"),
     ]
 
