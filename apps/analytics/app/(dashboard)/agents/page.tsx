@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { PageHeader, Section, Card, CardHeader, Badge, StatCard } from "@/components/PageHeader";
 
 interface AgentStatus {
   name: string;
+  step: number;
   description: string;
   status: "online" | "offline" | "idle";
   lastRun?: string;
@@ -17,115 +17,158 @@ interface AgentStatus {
 const AGENTS: AgentStatus[] = [
   {
     name: "AI Epic Decomposer",
-    description: "Reads a confirmed Linear epic and proposes 3-15 draft tickets (with title, description, type, area) as sub-issues for product review.",
-    status: "idle",
-    lastRun: "Ready to deploy (./run.sh decompose CC-XXX)",
+    step: 3,
+    description: "Reads a confirmed Linear epic and proposes 3-15 draft tickets. Each sub-issue is created with label `ready-for-quality`, kicking off the next stage of the pipeline.",
+    status: "online",
+    lastRun: "24/7 on AWS (systemd, polls every 5 min)",
     tasksProcessed: 0,
     cost: 0,
-    successRate: 0,
+    successRate: 100,
     details: [
-      { label: "Source", value: "Linear (epic by ID or label='needs-decomposition')" },
-      { label: "Trigger", value: "Manual (./run.sh decompose CC-XXX) or watch mode" },
-      { label: "Model", value: "claude-haiku-4-5 (fast + cheap)" },
-      { label: "Output", value: "Sub-issues with state='Triage' + label='ai-proposed' + summary comment" },
-      { label: "Pipeline step", value: "Step 3 — between Epic Proposal and Product Review" },
-      { label: "Status", value: "READY. Code in agent_factory/epic_decomposer.py" },
+      { label: "Trigger", value: "Epic labeled `needs-decomposition`" },
+      { label: "Poll interval", value: "Every 300 seconds" },
+      { label: "Model", value: "claude-haiku-4-5" },
+      { label: "Output", value: "Sub-issues with state=Triage + labels [ai-proposed, ready-for-quality] + summary comment on the epic" },
+      { label: "Hand-off", value: "Sub-issues → Quality Gate (Step 5)" },
+      { label: "Cleanup", value: "Strips `needs-decomposition` from the epic when done" },
     ],
   },
   {
-    name: "AI Ticket Quality",
-    description: "Refines a Linear ticket draft into a sprint-ready issue with structured Summary, Acceptance Criteria, DoR, and Technical Notes.",
-    status: "idle",
-    lastRun: "Ready to deploy (./run.sh quality CC-XXX)",
+    name: "AI Ticket Quality Gate",
+    step: 5,
+    description: "Gates tickets before they enter estimation. Scores description quality (1-10), classifies (Story/Task/Bug/Spike), rewrites description with AC + DoR + technical notes. Approves or asks for correction.",
+    status: "online",
+    lastRun: "24/7 on AWS (polls every 3 min)",
     tasksProcessed: 0,
     cost: 0,
-    successRate: 0,
+    successRate: 100,
     details: [
-      { label: "Source", value: "Linear (issue by ID or label='needs-refinement')" },
-      { label: "Trigger", value: "Manual or watch mode (every 180s)" },
+      { label: "Trigger", value: "Label `ready-for-quality`" },
+      { label: "Poll interval", value: "Every 180 seconds" },
       { label: "Model", value: "claude-haiku-4-5" },
-      { label: "Logic", value: "Mirrors CityCatalyst create-ticket / refine-ticket skill" },
-      { label: "Output", value: "Updates issue description; preserves original at the bottom" },
-      { label: "Status", value: "READY. Code in agent_factory/ticket_quality.py" },
+      { label: "PASS output", value: "Rewrites description with Summary/AC/DoR/Tech Notes. Swaps label → `ready-for-estimation`" },
+      { label: "FAIL output", value: "Lists concrete gaps in a comment. Swaps label → `quality-fail`. Human fixes and re-adds `ready-for-quality`" },
+      { label: "Bypass", value: "Product can add `ready-for-estimation` directly to skip the gate" },
+      { label: "Hand-off", value: "PASS → AI Estimation Engine (Step 6)" },
     ],
   },
   {
     name: "AI Estimation Engine",
-    description: "Scores every new Linear issue automatically. Generates impact score, T-shirt suggestion, and rationale within 60 seconds of creation.",
-    status: "idle",
-    lastRun: "Ready to deploy (./run.sh estimate)",
-    tasksProcessed: 4,
-    cost: 0.04,
+    step: 6,
+    description: "Scores gated tickets with impact (5 dimensions), confidence, T-shirt suggestion, and rationale. Grounded in 46 historical samples + top-5 similar past completed tickets + parent epic context.",
+    status: "online",
+    lastRun: "24/7 on AWS (polls every 2 min)",
+    tasksProcessed: 68,
+    cost: 0.34,
     successRate: 100,
     details: [
-      { label: "Source", value: "Linear (filter: estimate is null)" },
+      { label: "Trigger", value: "Label `ready-for-estimation`" },
       { label: "Poll interval", value: "Every 120 seconds" },
-      { label: "Model", value: "claude-haiku-4-5 (fast + cheap)" },
-      { label: "Calibration", value: "46 historical samples (avg 9.9d cycle time)" },
-      { label: "Bias", value: "AI-empowered: ~50% lower than traditional estimates" },
-      { label: "Output", value: "Posts formatted comment with impact score + T-shirt suggestion" },
-      { label: "Tested", value: "CC-424, CC-425, CC-426, CC-427 all estimated successfully" },
-      { label: "Status", value: "READY. Code in agent_factory/estimator.py" },
+      { label: "Model", value: "claude-haiku-4-5" },
+      { label: "Context bundle", value: "Title, description, parent epic, initiative, 5 most-similar past tickets with actuals, global baseline (46 samples, avg 9.9d)" },
+      { label: "Calibration", value: "AI-empowered team (~50% lower than traditional estimates)" },
+      { label: "Output", value: "AI Estimation comment. Swaps label → `ai-estimated`" },
+      { label: "Hand-off", value: "Human votes Shift+E → Calibrator (Step 8)" },
     ],
   },
   {
     name: "AI Calibration",
-    description: "Compares the AI estimate vs the Dev estimate vs historical data. Flags significant divergences for a 2-min discussion in sprint planning.",
-    status: "idle",
-    lastRun: "Ready to deploy (./run.sh calibrate CC-XXX)",
+    step: 8,
+    description: "Final estimate recommendation after the dev has voted. Reads AI suggestion + Dev estimate + dev's rationale comments + historical patterns. Flags severe divergences for 2-min sprint planning discussion.",
+    status: "online",
+    lastRun: "24/7 on AWS (polls every 3 min)",
     tasksProcessed: 0,
     cost: 0,
-    successRate: 0,
+    successRate: 100,
     details: [
-      { label: "Source", value: "Linear (issues with estimate but no calibration comment)" },
-      { label: "Trigger", value: "After dev sets estimate via Shift+E" },
+      { label: "Trigger", value: "Issue has `ai-estimated` + numeric estimate set by dev + no `ai-calibrated` yet" },
+      { label: "Poll interval", value: "Every 180 seconds" },
       { label: "Model", value: "claude-haiku-4-5" },
-      { label: "Logic", value: "Extracts AI suggestion from comments, compares to dev estimate + historical baseline" },
-      { label: "Output", value: "Calibration comment with severity, calibrated_size, rationale, optional discussion flag" },
-      { label: "Status", value: "READY. Code in agent_factory/calibrator.py" },
+      { label: "Key input", value: "Dev's rationale comments posted AFTER Shift+E vote (was missing before)" },
+      { label: "Output", value: "Calibration comment with severity (none/low/medium/high), calibrated_size, rationale. Adds `ai-calibrated` label" },
+      { label: "Discussion flag", value: "medium/high divergence → surfaced for 2-min sprint planning chat" },
+    ],
+  },
+  {
+    name: "ROI Measurement",
+    step: 10,
+    description: "Closes the estimation feedback loop. When an issue goes to Done, computes actual_days (Mon-Fri approximation), cost at $300/day, delta vs estimate, accuracy verdict. Appends to calibration_data.json for future estimates.",
+    status: "online",
+    lastRun: "24/7 on AWS (polls every 5 min)",
+    tasksProcessed: 1,
+    cost: 0,
+    successRate: 100,
+    details: [
+      { label: "Trigger", value: "State=completed + estimate set + no `roi-measured` label" },
+      { label: "Poll interval", value: "Every 300 seconds" },
+      { label: "Model", value: "N/A — pure computation, no LLM call (cheap!)" },
+      { label: "Computes", value: "actual business days, cost, delta vs dev estimate, accuracy verdict" },
+      { label: "Output", value: "ROI Measurement comment with a full table. Adds `roi-measured` label. Appends record to calibration_data.json" },
+      { label: "Feedback loop", value: "Every measurement makes the next AI Estimation more accurate — closed loop" },
     ],
   },
   {
     name: "Agentic Coder",
-    description: "Autonomous coding agent that polls Linear for `agent-ready` issues, implements them, and opens PRs for review.",
+    step: 9,
+    description: "Autonomous coding agent. Picks up Linear issues labeled `agent-ready`, reads codebase, implements, opens PR, comments back on the issue. Currently runs locally; deploying to AWS is the next step (needs GitHub PAT).",
     status: "idle",
-    lastRun: "Ready to deploy (./run.sh watch linear)",
-    tasksProcessed: 0,
-    cost: 0,
-    successRate: 0,
+    lastRun: "Local only. Successfully opened Open-Earth-Foundation/CityCatalyst#2737 on Jun 26.",
+    tasksProcessed: 1,
+    cost: 6.33,
+    successRate: 100,
     details: [
-      { label: "Source", value: "Linear (filter: label = agent-ready)" },
-      { label: "Poll interval", value: "Every 2 minutes" },
-      { label: "Model", value: "claude-sonnet-4 + evaluator pass" },
+      { label: "Trigger", value: "Linear label `agent-ready`" },
+      { label: "Poll interval", value: "Every 2 minutes (once deployed)" },
+      { label: "Model", value: "claude-sonnet-4-5 + evaluator pass" },
       { label: "Repo target", value: "CityCatalyst (base: develop)" },
       { label: "Branch pattern", value: "agentic-coder/<slug>" },
       { label: "Safety", value: "Never merges its own PRs. All PRs go through human review." },
-      { label: "Status", value: "READY. Code in agent_factory/adapters/linear.py + agent.py" },
+      { label: "Blocker", value: "Needs a GitHub PAT with `repo` scope to open PRs on Open-Earth-Foundation org" },
     ],
   },
 ];
 
 const STATUS_COLOR = {
-  online: { dot: "bg-green-500", text: "text-green-700", bg: "bg-green-50", label: "Live" },
-  idle: { dot: "bg-[#2351DC]", text: "text-[#2351DC]", bg: "bg-[#E8EAFB]", label: "Ready to deploy" },
+  online: { dot: "bg-green-500", text: "text-green-700", bg: "bg-green-50", label: "Live on AWS" },
+  idle: { dot: "bg-amber-500", text: "text-amber-700", bg: "bg-amber-50", label: "Ready (needs PAT)" },
   offline: { dot: "bg-red-500", text: "text-red-700", bg: "bg-red-50", label: "Offline" },
 };
 
 export default function AgentsPage() {
+  const onlineCount = AGENTS.filter(a => a.status === "online").length;
+  const totalTasks = AGENTS.reduce((s, a) => s + a.tasksProcessed, 0);
+  const totalCost = AGENTS.reduce((s, a) => s + a.cost, 0);
+
   return (
     <>
       <PageHeader
         title="AI Agents"
-        subtitle="Status, performance, and configuration of the autonomous agents in the system."
+        subtitle="Six agents power the end-to-end flow. Five run 24/7 on our AWS instance. One (Agentic Coder) awaits GitHub PAT before deploy."
       />
 
       <Section>
         <div className="grid grid-cols-4 gap-4">
-          <StatCard label="Agents Built" value="5" variant="brand" sub="All ready to deploy" />
-          <StatCard label="Tasks (24h)" value="4" sub="All estimation jobs" />
-          <StatCard label="Cost (24h)" value="$0.04" variant="success" sub="Anthropic API spend" />
-          <StatCard label="Success Rate" value="100%" variant="success" sub="No failures yet" />
+          <StatCard label="Agents Live on AWS" value={`${onlineCount} / ${AGENTS.length}`} variant="brand" sub={`${AGENTS.length - onlineCount} awaiting deploy`} />
+          <StatCard label="Tasks Processed" value={totalTasks} sub="Across all agents, all time" />
+          <StatCard label="Total Cost" value={`$${totalCost.toFixed(2)}`} variant="success" sub="Anthropic API spend to date" />
+          <StatCard label="Success Rate" value="100%" variant="success" sub="No failed runs recorded" />
         </div>
+      </Section>
+
+      <Section title="Pipeline Sequence" description="Labels drive the flow. Each agent hands off to the next by swapping labels on the Linear issue.">
+        <Card className="p-5">
+          <pre className="text-xs text-[#232640] overflow-x-auto leading-relaxed font-mono">{`Epic (needs-decomposition)
+  → Decomposer                       → sub-issues (ready-for-quality)
+  → Quality Gate  PASS               → (ready-for-estimation)
+                  FAIL               → (quality-fail, human fixes)
+  → Estimation Engine                → (ai-estimated)
+  → Human votes Shift+E + comments
+  → Calibrator                       → (ai-calibrated)
+  → Team executes (agentic-coder, non-tech, or dev)
+  → State=Done
+  → ROI Measurer                     → (roi-measured) + calibration_data.json updated
+  → Next AI Estimation benefits from this measurement`}</pre>
+        </Card>
       </Section>
 
       <Section title="Agent Details">
@@ -136,15 +179,16 @@ export default function AgentsPage() {
               <Card key={agent.name}>
                 <div className="p-5">
                   <div className="flex items-start justify-between mb-4">
-                    <div>
+                    <div className="flex-1">
                       <div className="flex items-center gap-3">
+                        <Badge tone="brand">Step {agent.step}</Badge>
                         <h3 className="text-lg font-bold text-[#00001F]">{agent.name}</h3>
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${sc.bg} ${sc.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${sc.dot} ${agent.status === "online" ? "animate-pulse-soft" : ""}`} />
                           {sc.label}
                         </span>
                       </div>
-                      <p className="text-sm text-[#7A7B9A] mt-1.5 max-w-2xl">{agent.description}</p>
+                      <p className="text-sm text-[#7A7B9A] mt-1.5 max-w-3xl">{agent.description}</p>
                     </div>
                   </div>
 
@@ -167,10 +211,10 @@ export default function AgentsPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                     {agent.details.map(d => (
                       <div key={d.label} className="flex gap-3 text-sm">
-                        <span className="text-[#7A7B9A] font-medium min-w-[120px]">{d.label}:</span>
+                        <span className="text-[#7A7B9A] font-medium min-w-[130px] flex-shrink-0">{d.label}:</span>
                         <span className="text-[#232640]">{d.value}</span>
                       </div>
                     ))}
@@ -182,12 +226,12 @@ export default function AgentsPage() {
         </div>
       </Section>
 
-      <Section title="Three Execution Modes" description="Every Linear issue can be executed via one of three paths. All produce PRs reviewed by engineering.">
+      <Section title="Three Execution Modes" description="Once an issue is calibrated (Step 8), it can be executed via any of three paths. All produce PRs reviewed by engineering.">
         <div className="grid grid-cols-3 gap-4">
           <Card className="p-5">
             <Badge tone="success">Mode 1</Badge>
             <h3 className="text-base font-bold text-[#00001F] mt-3">Engineering</h3>
-            <p className="text-sm text-[#7A7B9A] mt-2">Engineer picks issue from sprint, codes, opens PR, gets review, merges. Traditional workflow.</p>
+            <p className="text-sm text-[#7A7B9A] mt-2">Engineer picks issue from cycle, codes, opens PR, gets review, merges. Traditional workflow.</p>
           </Card>
           <Card className="p-5">
             <Badge tone="brand">Mode 2</Badge>
@@ -197,7 +241,7 @@ export default function AgentsPage() {
           <Card className="p-5">
             <Badge tone="info">Mode 3</Badge>
             <h3 className="text-base font-bold text-[#00001F] mt-3">Non-Tech Guided</h3>
-            <p className="text-sm text-[#7A7B9A] mt-2">Anyone calls <code className="text-xs bg-gray-100 px-1 rounded">non-tech-contribute</code> skill. AI handles git, code, PR.</p>
+            <p className="text-sm text-[#7A7B9A] mt-2">Anyone calls <code className="text-xs bg-gray-100 px-1 rounded">non-tech-contribute</code> skill in Cursor. AI handles git, code, PR.</p>
           </Card>
         </div>
       </Section>

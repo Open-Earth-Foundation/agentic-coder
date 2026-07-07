@@ -117,8 +117,64 @@ class LinearAdapter(TaskAdapter):
 
             self._add_comment(issue_id, comment_body)
             self._transition_issue(issue_id, "In Review")
-        except Exception:
-            pass
+            # Remove the agent-ready label so the ticket isn't picked up again
+            # on the next poll (In Review is still an "unstarted-like" state
+            # from the filter's perspective).
+            self._remove_label_by_name(issue_id, self.label)
+            # Add agent-done label to mark it processed and enable dashboards.
+            self._add_label_by_name(issue_id, "agent-done")
+        except Exception as e:
+            print(f"[LinearAdapter] on_task_completed error: {e}")
+
+    def _remove_label_by_name(self, issue_id: str, label_name: str) -> None:
+        label_id = self._resolve_label_id(label_name)
+        if not label_id:
+            return
+        mutation = """
+        mutation RemoveLabel($id: String!, $labelId: String!) {
+          issueRemoveLabel(id: $id, labelId: $labelId) { success }
+        }
+        """
+        self._graphql(mutation, {"id": issue_id, "labelId": label_id})
+
+    def _add_label_by_name(self, issue_id: str, label_name: str) -> None:
+        label_id = self._resolve_label_id(label_name, create_if_missing=True)
+        if not label_id:
+            return
+        mutation = """
+        mutation AddLabel($id: String!, $labelId: String!) {
+          issueAddLabel(id: $id, labelId: $labelId) { success }
+        }
+        """
+        self._graphql(mutation, {"id": issue_id, "labelId": label_id})
+
+    def _resolve_label_id(self, label_name: str, create_if_missing: bool = False) -> str | None:
+        if not self.team_id:
+            return None
+        query = """
+        query GetLabels($teamId: String!) {
+          issueLabels(filter: { team: { id: { eq: $teamId } } }, first: 250) {
+            nodes { id name }
+          }
+        }
+        """
+        data = self._graphql(query, {"teamId": self.team_id})
+        nodes = data.get("issueLabels", {}).get("nodes", [])
+        for lbl in nodes:
+            if lbl["name"].lower() == label_name.lower():
+                return lbl["id"]
+        if create_if_missing:
+            mutation = """
+            mutation CreateLabel($teamId: String!, $name: String!) {
+              issueLabelCreate(input: { teamId: $teamId, name: $name, color: "#2351DC" }) {
+                success
+                issueLabel { id }
+              }
+            }
+            """
+            data = self._graphql(mutation, {"teamId": self.team_id, "name": label_name})
+            return data.get("issueLabelCreate", {}).get("issueLabel", {}).get("id")
+        return None
 
     def _transition_issue(self, issue_id: str, state_name: str) -> None:
         state_id = self._resolve_state_id(state_name)

@@ -113,8 +113,65 @@ def fetch_epic(api_key: str, epic_identifier: str) -> dict:
 
 
 def fetch_epics_needing_decomposition(api_key: str, team_id: str) -> list[dict]:
-    """Find parent issues that have no children yet or carry the `needs-decomposition` label."""
-    query = f"""
+    """Find work that needs to be decomposed. Two supported forms (in order of preference):
+
+    1. Project-as-Epic (Linear-native, RECOMMENDED)
+       Projects carrying the `needs-decomposition` label. Decomposed issues are
+       created linked to the Project (via projectId).
+
+    2. Issue-as-Epic (legacy, lightweight)
+       Issues carrying the `needs-decomposition` label with no sub-issues yet.
+       Decomposed issues are created as sub-issues (via parentId).
+
+    Returns a list of dicts with a `kind` field: "project" or "issue".
+    """
+    results: list[dict] = []
+
+    # 1. Fetch Projects with the label
+    project_query = f"""
+    {{
+      projects(
+        filter: {{
+          accessibleTeams: {{ some: {{ id: {{ eq: "{team_id}" }} }} }}
+          labels: {{ some: {{ name: {{ eq: "needs-decomposition" }} }} }}
+          state: {{ nin: ["completed", "canceled"] }}
+        }}
+        first: 10
+      ) {{
+        nodes {{
+          id name description
+          initiatives {{ nodes {{ name }} }}
+          issues(first: 50) {{ nodes {{ id title }} }}
+        }}
+      }}
+    }}
+    """
+    try:
+        data = _graphql(api_key, project_query)
+        for p in data.get("projects", {}).get("nodes", []):
+            # The label is an explicit human trigger — decompose even if the
+            # Project already has issues. Pass existing titles as context so
+            # the AI proposes complementary (not duplicate) tickets.
+            existing_titles = [n["title"] for n in p.get("issues", {}).get("nodes", [])]
+            initiative = None
+            inits = p.get("initiatives", {}).get("nodes", [])
+            if inits:
+                initiative = inits[0]["name"]
+            results.append({
+                "kind": "project",
+                "id": p["id"],
+                "identifier": None,
+                "title": p["name"],
+                "description": p.get("description") or "",
+                "project": {"id": p["id"], "name": p["name"], "description": p.get("description")},
+                "initiative": initiative,
+                "existing_issues": existing_titles,
+            })
+    except Exception as e:
+        print(f"[decomposer] project query failed (may be unsupported filter): {e}")
+
+    # 2. Legacy Issue-as-Epic fallback
+    issue_query = f"""
     {{
       issues(
         filter: {{
@@ -132,9 +189,20 @@ def fetch_epics_needing_decomposition(api_key: str, team_id: str) -> list[dict]:
       }}
     }}
     """
-    data = _graphql(api_key, query)
-    nodes = data.get("issues", {}).get("nodes", [])
-    return [n for n in nodes if not n.get("children", {}).get("nodes")]
+    data = _graphql(api_key, issue_query)
+    for issue in data.get("issues", {}).get("nodes", []):
+        if issue.get("children", {}).get("nodes"):
+            continue
+        results.append({
+            "kind": "issue",
+            "id": issue["id"],
+            "identifier": issue["identifier"],
+            "title": issue["title"],
+            "description": issue.get("description") or "",
+            "project": issue.get("project"),
+        })
+
+    return results
 
 
 def decompose(epic: dict, config: Config) -> tuple[list[ProposedTicket], str]:
@@ -146,13 +214,22 @@ def decompose(epic: dict, config: Config) -> tuple[list[ProposedTicket], str]:
         if proj.get("description"):
             project_ctx += f"\nInitiative description: {proj['description'][:500]}"
 
+    existing_ctx = ""
+    existing = epic.get("existing_issues") or []
+    if existing:
+        listed = "\n".join(f"- {t}" for t in existing[:30])
+        existing_ctx = f"""
+**Tickets that ALREADY exist in this epic (do NOT duplicate them; propose only complementary work):**
+{listed}
+"""
+
     user_message = f"""Decompose this epic into draft tickets:
 
 **Epic Title:** {epic.get('title', 'Untitled')}
 **Epic Description:**
 {epic.get('description') or '(no description provided)'}
 {project_ctx}
-
+{existing_ctx}
 Propose 3-15 well-scoped tickets. Each should fit in 1-3 days. Respond with JSON only.
 """
 
@@ -187,13 +264,24 @@ Propose 3-15 well-scoped tickets. Each should fit in 1-3 days. Respond with JSON
 
 
 def create_proposed_tickets(api_key: str, team_id: str, epic: dict, tickets: list[ProposedTicket]) -> list[str]:
-    """Create the proposed tickets as sub-issues in Linear with Triage state + ai-proposed label."""
+    """Create the proposed tickets in Linear with Triage state.
+
+    - For Project-as-Epic (`kind: "project"`): issues are linked to the project via projectId.
+    - For Issue-as-Epic (`kind: "issue"`): issues are created as sub-issues via parentId.
+
+    Each ticket gets:
+    - Label `ai-proposed` — audit trail (this ticket came from the AI)
+    - Label `ready-for-quality` — kicks off the next agent in the pipeline
+    - Any inferred type/area labels
+    """
     created_ids = []
+    kind = epic.get("kind", "issue")
     epic_id = epic["id"]
-    parent_id = epic["identifier"]
+    parent_label = epic.get("identifier") or epic.get("title", "Project")
 
     for t in tickets:
-        labels = ["ai-proposed"]
+        # `ready-for-quality` is the signal to the Quality Gate agent to pick this up next
+        labels = ["ai-proposed", "ready-for-quality"]
         type_label = TYPE_TO_LABEL.get(t.type)
         if type_label:
             labels.append(type_label)
@@ -201,28 +289,31 @@ def create_proposed_tickets(api_key: str, team_id: str, epic: dict, tickets: lis
         if area_label:
             labels.append(area_label)
 
+        parent_ref = f"Project: {epic['title']}" if kind == "project" else f"Parent issue: {parent_label}"
         description = f"""{t.description}
 
 ---
 
 **Proposed by AI Epic Decomposer** — review, modify, or remove before sprint planning.
 
-- Parent epic: {parent_id}
+- {parent_ref}
 - Type: {t.type}
 - Area: {t.area}
 """
 
-        # Resolve label IDs
         label_ids = _resolve_label_ids(api_key, team_id, labels)
         triage_state_id = _resolve_state_id(api_key, team_id, "Triage")
 
-        input_payload = {
+        input_payload: dict = {
             "title": t.title,
             "description": description,
             "teamId": team_id,
-            "parentId": epic_id,
             "labelIds": label_ids,
         }
+        if kind == "project":
+            input_payload["projectId"] = epic_id
+        else:
+            input_payload["parentId"] = epic_id
         if triage_state_id:
             input_payload["stateId"] = triage_state_id
 
@@ -294,53 +385,152 @@ def _resolve_label_ids(api_key: str, team_id: str, label_names: list[str]) -> li
     return ids
 
 
-def post_summary_comment(api_key: str, epic_id: str, tickets: list[ProposedTicket], created_ids: list[str], rationale: str) -> None:
-    """Post a summary comment on the epic showing what was proposed."""
+def post_summary_comment(api_key: str, epic: dict, tickets: list[ProposedTicket], created_ids: list[str], rationale: str) -> None:
+    """Post a summary of the decomposition.
+
+    - Issue-as-Epic: posts a Linear comment on the epic issue.
+    - Project-as-Epic: creates a Project Update on the project (Linear's native mechanism for project-level updates).
+    """
     lines = [f"**AI Epic Decomposer** proposed {len(tickets)} draft tickets:\n"]
     for i, (t, tid) in enumerate(zip(tickets, created_ids), 1):
         lines.append(f"{i}. [{tid}] {t.title} ({t.type}/{t.area})")
     lines.append(f"\n**Rationale:** {rationale}")
-    lines.append("\n*Tickets created with `ai-proposed` label and state `Triage`. Product team: please review and curate.*")
-
+    lines.append("\n*Tickets created with `ai-proposed` + `ready-for-quality` labels, state `Triage`. The Quality Gate agent will refine them next, then AI Estimation will score them. Product team: review and curate before sprint planning.*")
     body = "\n".join(lines)
+
+    if epic.get("kind") == "project":
+        mutation = """
+        mutation ProjectUpdate($input: ProjectUpdateCreateInput!) {
+          projectUpdateCreate(input: $input) { success }
+        }
+        """
+        try:
+            _graphql(api_key, mutation, {"input": {"projectId": epic["id"], "body": body}})
+        except Exception as e:
+            print(f"[decomposer] project update failed, tickets still linked: {e}")
+    else:
+        mutation = """
+        mutation Comment($issueId: String!, $body: String!) {
+          commentCreate(input: { issueId: $issueId, body: $body }) { success }
+        }
+        """
+        _graphql(api_key, mutation, {"issueId": epic["id"], "body": body})
+
+
+def remove_needs_decomposition_label(api_key: str, team_id: str, epic: dict) -> None:
+    """Strip the needs-decomposition label so this epic isn't re-processed.
+
+    Projects have their own label set (workspace-level project labels); issues
+    have team-scoped issue labels.
+    """
+    if epic.get("kind") == "project":
+        # Project labels are workspace-level. Swap needs-decomposition → ai-decomposed
+        # using the native add/remove mutations.
+        labels_q = '{ projectLabels(first: 100) { nodes { id name } } }'
+        data = _graphql(api_key, labels_q)
+        by_name = {l["name"].lower(): l["id"] for l in data.get("projectLabels", {}).get("nodes", [])}
+
+        needs_id = by_name.get("needs-decomposition")
+        if needs_id:
+            _graphql(api_key, """
+            mutation Remove($id: String!, $labelId: String!) {
+              projectRemoveLabel(id: $id, labelId: $labelId) { success }
+            }
+            """, {"id": epic["id"], "labelId": needs_id})
+
+        done_id = by_name.get("ai-decomposed")
+        if not done_id:
+            result = _graphql(api_key, """
+            mutation CreateLabel($input: ProjectLabelCreateInput!) {
+              projectLabelCreate(input: $input) { success projectLabel { id } }
+            }
+            """, {"input": {"name": "ai-decomposed", "color": "#8B5CF6"}})
+            done_id = result.get("projectLabelCreate", {}).get("projectLabel", {}).get("id")
+        if done_id:
+            _graphql(api_key, """
+            mutation Add($id: String!, $labelId: String!) {
+              projectAddLabel(id: $id, labelId: $labelId) { success }
+            }
+            """, {"id": epic["id"], "labelId": done_id})
+        return
+
+    # Issue-as-Epic path
+    label_q = f"""
+    {{ issueLabels(filter: {{ name: {{ eq: "needs-decomposition" }}, team: {{ id: {{ eq: "{team_id}" }} }} }}) {{ nodes {{ id }} }} }}
+    """
+    data = _graphql(api_key, label_q)
+    nodes = data.get("issueLabels", {}).get("nodes", [])
+    if not nodes:
+        return
+    label_id = nodes[0]["id"]
+
+    issue_q = f'{{ issue(id: "{epic["id"]}") {{ labels {{ nodes {{ id }} }} }} }}'
+    issue_data = _graphql(api_key, issue_q)
+    existing = [n["id"] for n in issue_data.get("issue", {}).get("labels", {}).get("nodes", []) if n["id"] != label_id]
+
     mutation = """
-    mutation Comment($issueId: String!, $body: String!) {
-      commentCreate(input: { issueId: $issueId, body: $body }) { success }
+    mutation Update($id: String!, $input: IssueUpdateInput!) {
+      issueUpdate(id: $id, input: $input) { success }
     }
     """
-    _graphql(api_key, mutation, {"issueId": epic_id, "body": body})
+    _graphql(api_key, mutation, {"id": epic["id"], "input": {"labelIds": existing}})
 
 
 def decompose_one(epic_identifier: str) -> None:
-    """End-to-end: fetch epic, decompose, create sub-issues, post summary."""
+    """End-to-end: fetch a single Issue epic by identifier, decompose, create sub-issues, post summary.
+
+    NOTE: This entry point is Issue-as-Epic only. For Project-as-Epic, use the
+    watch loop (which auto-detects both modes) or call `_decompose_epic_dict` directly.
+    """
     api_key = os.environ.get("LINEAR_API_KEY", "")
     team_id = os.environ.get("LINEAR_TEAM_ID", "")
     if not api_key or not team_id:
         raise ValueError("LINEAR_API_KEY and LINEAR_TEAM_ID required")
-
-    config = Config()
-    config.validate()
 
     epic = fetch_epic(api_key, epic_identifier)
     if not epic:
         print(f"[decomposer] Epic {epic_identifier} not found")
         return
 
-    print(f"[decomposer] Decomposing {epic['identifier']}: {epic['title']}")
+    epic_dict = {
+        "kind": "issue",
+        "id": epic["id"],
+        "identifier": epic["identifier"],
+        "title": epic["title"],
+        "description": epic.get("description") or "",
+        "project": epic.get("project"),
+    }
+    _decompose_epic_dict(epic_dict, api_key, team_id)
+
+
+def _decompose_epic_dict(epic: dict, api_key: str, team_id: str) -> None:
+    """Actual decomposition worker — accepts a normalized epic dict."""
+    config = Config()
+    config.validate()
+
+    label = epic.get("identifier") or f"Project '{epic.get('title')}'"
+    print(f"[decomposer] Decomposing {label}: {epic['title']} (kind={epic.get('kind')})")
+
     tickets, rationale = decompose(epic, config)
     print(f"[decomposer] Got {len(tickets)} proposed tickets")
     for t in tickets:
         print(f"  - [{t.type}/{t.area}] {t.title}")
 
     created = create_proposed_tickets(api_key, team_id, epic, tickets)
-    print(f"[decomposer] Created {len(created)} sub-issues: {created}")
+    print(f"[decomposer] Created {len(created)} tickets: {created}")
 
-    post_summary_comment(api_key, epic["id"], tickets, created, rationale)
-    print(f"[decomposer] Posted summary comment to {epic['identifier']}")
+    post_summary_comment(api_key, epic, tickets, created, rationale)
+    print(f"[decomposer] Posted summary")
+
+    try:
+        remove_needs_decomposition_label(api_key, team_id, epic)
+        print(f"[decomposer] Removed needs-decomposition label from {label}")
+    except Exception as e:
+        print(f"[decomposer] Warning: could not remove label from {label}: {e}")
 
 
 def watch_loop(interval: int = 300) -> None:
-    """Poll for epics labeled `needs-decomposition` with no children, decompose them."""
+    """Poll for Projects or Issues labeled `needs-decomposition` and decompose them."""
     api_key = os.environ.get("LINEAR_API_KEY", "")
     team_id = os.environ.get("LINEAR_TEAM_ID", "")
     config = Config()
@@ -350,12 +540,13 @@ def watch_loop(interval: int = 300) -> None:
         try:
             epics = fetch_epics_needing_decomposition(api_key, team_id)
             if epics:
-                print(f"[decomposer] Found {len(epics)} epics to decompose")
+                print(f"[decomposer] Found {len(epics)} candidates to decompose")
                 for epic in epics:
+                    label = epic.get("identifier") or f"Project '{epic.get('title')}'"
                     try:
-                        decompose_one(epic["identifier"])
+                        _decompose_epic_dict(epic, api_key, team_id)
                     except Exception as e:
-                        print(f"[decomposer] Error on {epic['identifier']}: {e}")
+                        print(f"[decomposer] Error on {label}: {e}")
             else:
                 print("[decomposer] No epics need decomposition")
         except Exception as e:
