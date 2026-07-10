@@ -152,7 +152,7 @@ class LinearAdapter(TaskAdapter):
         if not self.team_id:
             return None
         query = """
-        query GetLabels($teamId: String!) {
+        query GetLabels($teamId: ID!) {
           issueLabels(filter: { team: { id: { eq: $teamId } } }, first: 250) {
             nodes { id name }
           }
@@ -195,7 +195,7 @@ class LinearAdapter(TaskAdapter):
             return None
 
         query = """
-        query GetStates($teamId: String!) {
+        query GetStates($teamId: ID!) {
           workflowStates(filter: { team: { id: { eq: $teamId } } }) {
             nodes { id name }
           }
