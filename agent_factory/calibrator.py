@@ -98,7 +98,7 @@ def fetch_issue_full(api_key: str, identifier: str) -> dict:
         id identifier title description estimate
         labels {{ nodes {{ id name }} }}
         assignee {{ name }}
-        comments(first: 50) {{ nodes {{ id body createdAt author {{ name }} }} }}
+        comments(first: 50) {{ nodes {{ id body createdAt user {{ name }} }} }}
     }} }}
     """
     return _graphql(api_key, query).get("issue", {})
@@ -189,7 +189,7 @@ def collect_dev_rationale(comments: list[dict], ai_size: str | None) -> list[str
         # skip our own agent comments
         if any(marker in body for marker in ("AI Estimation Suggestion", "AI Calibration", "AI Quality Gate", "AI Epic Decomposer", "Agent completed this task")):
             continue
-        author = c.get("author", {}).get("name", "?")
+        author = (c.get("user") or {}).get("name", "?")
         rationale.append(f"{author}: {body[:400]}")
     return rationale
 
