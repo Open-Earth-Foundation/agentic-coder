@@ -116,9 +116,9 @@ class LinearAdapter(TaskAdapter):
             comment_body += f"**Summary:**\n{summary[:2000]}"
 
             self._add_comment(issue_id, comment_body)
-            self._transition_issue(issue_id, "In Review")
+            self._transition_issue(issue_id, "In Review (PR)")
             # Remove the agent-ready label so the ticket isn't picked up again
-            # on the next poll (In Review is still an "unstarted-like" state
+            # on the next poll (In Review (PR) is still an "unstarted-like" state
             # from the filter's perspective).
             self._remove_label_by_name(issue_id, self.label)
             # Add agent-done label to mark it processed and enable dashboards.
