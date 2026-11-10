@@ -428,7 +428,7 @@ def run_estimation_loop(once: bool = False, interval: int = 120) -> None:
                         # Grab a few similar past completed tickets (same labels) so the
                         # estimate is grounded in real history, not just a global baseline.
                         area_labels = [l["name"] for l in issue.get("labels", {}).get("nodes", [])
-                                       if l["name"] not in ("ai-estimated", "agent-ready", "ai-proposed", "needs-decomposition", "ready-for-estimation", "ready-for-quality", "quality-fail", "ai-calibrated", "roi-measured")]
+                                       if l["name"] not in ("ai-estimated", "agent-ready", "ai-proposed", "ready-for-estimation", "ready-for-quality", "quality-fail", "ai-calibrated", "roi-measured")]
                         similar = []
                         try:
                             similar = fetch_similar_completed_issues(api_key, team_id, area_labels)

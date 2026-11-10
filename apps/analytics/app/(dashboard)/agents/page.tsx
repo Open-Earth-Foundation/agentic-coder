@@ -16,24 +16,6 @@ interface AgentStatus {
 
 const AGENTS: AgentStatus[] = [
   {
-    name: "AI Epic Decomposer",
-    step: 3,
-    description: "Reads a confirmed Linear epic and proposes 3-15 draft tickets. Each sub-issue is created with label `ready-for-quality`, kicking off the next stage of the pipeline.",
-    status: "online",
-    lastRun: "24/7 on AWS (systemd, polls every 5 min)",
-    tasksProcessed: 0,
-    cost: 0,
-    successRate: 100,
-    details: [
-      { label: "Trigger", value: "Epic labeled `needs-decomposition`" },
-      { label: "Poll interval", value: "Every 300 seconds" },
-      { label: "Model", value: "claude-haiku-4-5" },
-      { label: "Output", value: "Sub-issues with state=Triage + labels [ai-proposed, ready-for-quality] + summary comment on the epic" },
-      { label: "Hand-off", value: "Sub-issues → Quality Gate (Step 5)" },
-      { label: "Cleanup", value: "Strips `needs-decomposition` from the epic when done" },
-    ],
-  },
-  {
     name: "AI Ticket Quality Gate",
     step: 5,
     description: "Gates tickets before they enter estimation. Scores description quality (1-10), classifies (Story/Task/Bug/Spike), rewrites description with AC + DoR + technical notes. Approves or asks for correction.",
@@ -143,7 +125,7 @@ export default function AgentsPage() {
     <>
       <PageHeader
         title="AI Agents"
-        subtitle="Six agents power the end-to-end flow. Five run 24/7 on our AWS instance. One (Agentic Coder) awaits GitHub PAT before deploy."
+        subtitle="Five agents power the end-to-end flow. Epic slicing lives in Funga (human preview). Four pollers run 24/7 on AWS; Agentic Coder awaits GitHub PAT before deploy."
       />
 
       <Section>
@@ -157,8 +139,8 @@ export default function AgentsPage() {
 
       <Section title="Pipeline Sequence" description="Labels drive the flow. Each agent hands off to the next by swapping labels on the Linear issue.">
         <Card className="p-5">
-          <pre className="text-xs text-[#232640] overflow-x-auto leading-relaxed font-mono">{`Epic (needs-decomposition)
-  → Decomposer                       → sub-issues (ready-for-quality)
+          <pre className="text-xs text-[#232640] overflow-x-auto leading-relaxed font-mono">{`Funga (full walk / refine)           → ready-for-estimation (skip gate)
+Funga (thin: meeting / 30-60-90 / slice)
   → Quality Gate  PASS               → (ready-for-estimation)
                   FAIL               → (quality-fail, human fixes)
   → Estimation Engine                → (ai-estimated)

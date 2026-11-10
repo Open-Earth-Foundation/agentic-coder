@@ -212,7 +212,7 @@ Each task source has an adapter that handles the full lifecycle:
 | Markdown | Parses `## ` headings | — | — |
 | Jira | Queries by label | Moves to "In Progress" | Posts PR link as comment |
 | Notion | Queries by status | Sets "In Progress" | Sets "Done" + adds comment |
-| Linear | Queries by label (`agent-ready`) | Moves to "In Progress" | Posts PR comment + moves to "In Review" |
+| Linear | Queries by label (`agent-ready`) | Moves to "In Progress" | Posts PR comment + moves to "In Review (PR)" |
 
 ### Pre-flight checks
 

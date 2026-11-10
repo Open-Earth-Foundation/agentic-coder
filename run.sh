@@ -47,7 +47,6 @@ usage() {
     echo ""
     echo "  AI Agents (Linear):"
     echo "    estimate             AI Estimation Engine — scores unestimated issues"
-    echo "    decompose <epic>     AI Epic Decomposer — propose tickets from an epic"
     echo "    quality <issue>      AI Ticket Quality — refine a ticket with AC + tech notes"
     echo "    calibrate <issue>    AI Calibration — compare AI vs Dev estimates"
     echo "    roi <issue>          ROI Measurement — actual vs estimate for a Done issue"
@@ -114,18 +113,6 @@ for i, t in enumerate(tasks, 1):
         ;;
     estimate)
         python -m agent_factory.estimator "${@:2}"
-        ;;
-    decompose)
-        if [ -z "${2:-}" ]; then
-            echo "Error: specify an epic identifier, e.g. ./run.sh decompose CC-336"
-            echo "Or use --watch to poll for epics: ./run.sh decompose --watch"
-            exit 1
-        fi
-        if [ "${2}" = "--watch" ]; then
-            python -m agent_factory.epic_decomposer --watch
-        else
-            python -m agent_factory.epic_decomposer --epic "$2"
-        fi
         ;;
     quality)
         if [ -z "${2:-}" ]; then

@@ -260,8 +260,9 @@ export default function InitiativesPage() {
               Product/Design creates these. Contains 3-15 Issues.
             </div>
             <div>
-              <span className="font-bold text-[#00001F]">Issue (= Story/Task)</span> — Atomic 1-3 day unit. Product or Dev creates; AI Epic Decomposer proposes them from Projects with label
-              <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs mx-1">needs-decomposition</code>.
+              <span className="font-bold text-[#00001F]">Issue (= Story/Task)</span> — Atomic 1-3 day unit. Product or Dev creates; Funga&apos;s epic slice proposes them with a human preview (labels
+              <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs mx-1">ai-proposed</code> +
+              <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs mx-1">ready-for-quality</code>).
             </div>
             <div>
               <span className="font-bold text-[#00001F]">Sub-Issue</span> — Optional finer breakdown created by developers when working through a Story.

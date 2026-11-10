@@ -356,7 +356,7 @@ def calibrate_one(identifier: str) -> None:
 
     calibration_data = load_calibration_data()
     area_labels = [l["name"] for l in issue.get("labels", {}).get("nodes", [])
-                   if l["name"] not in ("ai-estimated", "ai-calibrated", "ready-for-estimation", "ready-for-quality", "quality-fail", "ai-proposed", "agent-ready", "needs-decomposition", "roi-measured")]
+                   if l["name"] not in ("ai-estimated", "ai-calibrated", "ready-for-estimation", "ready-for-quality", "quality-fail", "ai-proposed", "agent-ready", "roi-measured")]
     similar = []
     try:
         similar = fetch_similar_completed(api_key, team_id, area_labels)
